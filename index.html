@@ -744,8 +744,11 @@
                 <button id="stop-session-btn" onclick="adminStopSession()" style="background: #dc3545; margin-top: 10px;">
                     ⏹️ Session beenden
                 </button>
+                <button id="auto-mode-btn" onclick="enableAutoMode()" style="background: #6c757d; margin-top: 10px; display: none;">
+                    🔄 Automatischen Modus aktivieren
+                </button>
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                    ⚠️ Der manuelle Start überschreibt die automatische Startlogik.
+                    ⚠️ Im manuellen Modus startet die Session nur durch Admin-Klick.
                 </p>
             </div>
     </div>
@@ -1105,8 +1108,8 @@
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
             const sessionState = sessionStates[currentLocation];
             
-            // Wenn Session manuell gesteuert wird, nicht automatisch starten
-            if (sessionState && sessionState.manuallyStarted) {
+            // Wenn Session unter manueller Kontrolle ist, nicht automatisch starten
+            if (sessionState && sessionState.manualControl) {
                 return;
             }
             
@@ -1134,13 +1137,19 @@
             const locationParticipants = participants[currentLocation] || [];
             if (locationParticipants.length < 2) return;
             
+            // Lade standort-spezifische Dauer
+            const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                ? config.locationConfigs[currentLocation] 
+                : config;
+            
             const matches = createMatches(locationParticipants);
             
             const newSessionState = {
                 active: true,
                 roundNumber: 1,
                 roundStartTime: Date.now(),
-                matches: matches
+                matches: matches,
+                roundDuration: locationConfig.roundDuration  // Speichere Dauer im Session State
             };
             
             sessionStates[currentLocation] = newSessionState;
@@ -1224,11 +1233,17 @@
         // Timer starten
         function startTimer(startTime) {
             const timerElement = document.getElementById('timer');
-            const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
-                ? config.locationConfigs[currentLocation] 
-                : config;
-            const ROUND_DURATION = (locationConfig.roundDuration || config.roundDuration) * 60 * 1000;
             
+            // Lade Dauer aus dem Session State (wurde beim Start gespeichert)
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            const roundDuration = sessionState && sessionState.roundDuration 
+                ? sessionState.roundDuration 
+                : (config.locationConfigs && config.locationConfigs[currentLocation] 
+                    ? config.locationConfigs[currentLocation].roundDuration 
+                    : config.roundDuration);
+            
+            const ROUND_DURATION = roundDuration * 60 * 1000;
             function updateTimer() {
                 const elapsed = Date.now() - startTime;
                 const remaining = Math.max(0, ROUND_DURATION - elapsed);
@@ -1283,7 +1298,9 @@
                     active: true,
                     roundNumber: sessionState.roundNumber + 1,
                     roundStartTime: Date.now(),
-                    matches: matches
+                    matches: matches,
+                    roundDuration: sessionState.roundDuration,  // Behalte die Dauer bei
+                    manualControl: sessionState.manualControl  // Behalte den Kontrollmodus bei
                 };
                 sessionStates[currentLocation] = newSessionState;
                 localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
@@ -1861,7 +1878,7 @@
                 roundNumber: 1,
                 roundStartTime: Date.now(),
                 matches: matches,
-                manuallyStarted: true
+                manualControl: true  // Aktiviert manuellen Kontrollmodus
             };
             
             localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
@@ -1889,7 +1906,7 @@
                 roundNumber: 0,
                 roundStartTime: null,
                 matches: {},
-                manuallyStarted: false
+                manualControl: true  // Bleibt im manuellen Modus
             };
             
             localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
@@ -1933,16 +1950,28 @@
             
             document.getElementById('session-participants-count').textContent = locationParticipants.length;
             
+            const isManualControl = sessionState && sessionState.manualControl;
+            
             if (sessionState && sessionState.active) {
-                document.getElementById('session-status-text').innerHTML = '<span style="color: #28a745; font-weight: bold;">🟢 Aktiv</span>';
+                const modeText = isManualControl ? ' (Manuell)' : ' (Auto)';
+                document.getElementById('session-status-text').innerHTML = '<span style="color: #28a745; font-weight: bold;">🟢 Aktiv' + modeText + '</span>';
                 document.getElementById('session-round-number').textContent = sessionState.roundNumber || '-';
                 document.getElementById('start-session-btn').disabled = true;
                 document.getElementById('stop-session-btn').disabled = false;
+                document.getElementById('auto-mode-btn').style.display = 'none';
             } else {
-                document.getElementById('session-status-text').innerHTML = '<span style="color: #666;">⚫ Inaktiv</span>';
+                const modeText = isManualControl ? ' (Manueller Modus)' : ' (Automatischer Modus)';
+                document.getElementById('session-status-text').innerHTML = '<span style="color: #666;">⚫ Inaktiv' + modeText + '</span>';
                 document.getElementById('session-round-number').textContent = '-';
                 document.getElementById('start-session-btn').disabled = locationParticipants.length < 2;
                 document.getElementById('stop-session-btn').disabled = true;
+                
+                // Zeige Auto-Mode Button nur wenn im manuellen Modus
+                if (isManualControl) {
+                    document.getElementById('auto-mode-btn').style.display = 'block';
+                } else {
+                    document.getElementById('auto-mode-btn').style.display = 'none';
+                }
             }
         }
 
@@ -1962,6 +1991,33 @@
                 clearInterval(adminStatusInterval);
                 adminStatusInterval = null;
             }
+        }
+
+        // Automatischen Modus wieder aktivieren
+        function enableAutoMode() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            if (!confirm(`Automatischen Start-Modus für ${selectedLocation} aktivieren?\n\nDie Session wird automatisch starten wenn >= 2 Teilnehmer da sind.`)) {
+                return;
+            }
+            
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const currentState = sessionStates[selectedLocation] || {};
+            
+            sessionStates[selectedLocation] = {
+                ...currentState,
+                manualControl: false
+            };
+            
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            
+            alert('Automatischer Modus aktiviert! ✓\n\nDie Session startet automatisch bei >= 2 Teilnehmern.');
+            updateSessionStatus();
         }
 
         function saveAdminSettings() {
