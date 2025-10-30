@@ -790,6 +790,7 @@
         let currentLocation = null;
         let currentSessionId = null;
         let sessionStartLock = false;
+        let currentRoundNumber = 0;
         let roundTimer = null;
         let syncInterval = null;
         let chatSyncInterval = null;
@@ -994,6 +995,7 @@
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                 const sessionState = sessionStates[currentLocation];
                 
+                // Nur starten wenn: Session aktiv UND wir noch nicht aktiv sind UND nicht schon im Conversation-Screen
                 if (sessionState && sessionState.active && !sessionActive) {
                     sessionActive = true;
                     startRound();
@@ -1258,6 +1260,15 @@
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
             const sessionState = sessionStates[currentLocation];
             
+            // Verhindern von mehrfachem Aufruf derselben Runde
+            if (currentRoundNumber === sessionState.roundNumber) {
+                console.log('Round already started, skipping...', sessionState.roundNumber);
+                return;
+            }
+            
+            currentRoundNumber = sessionState.roundNumber;
+            console.log('Starting round:', currentRoundNumber);
+            
             // Prüfen ob Session-ID sich geändert hat
             if (currentSessionId && sessionState.sessionId !== currentSessionId) {
                 console.log('New session detected, updating...');
@@ -1377,7 +1388,13 @@
             const isCoordinator = currentUser.id === locationParticipants[0].id;
             
             if (isCoordinator) {
-                const matches = createMatches(locationParticipants);
+                // WICHTIG: Hole die AKTUELLSTE Teilnehmerliste - inkl. neu dazugekommener!
+                const freshParticipants = JSON.parse(localStorage.getItem('participants'));
+                const freshLocationParticipants = freshParticipants[currentLocation] || [];
+                
+                console.log('Creating matches for next round with', freshLocationParticipants.length, 'participants');
+                
+                const matches = createMatches(freshLocationParticipants);
                 const newSessionState = {
                     active: true,
                     sessionId: sessionState.sessionId,  // Behalte Session-ID bei
@@ -1389,9 +1406,16 @@
                 };
                 sessionStates[currentLocation] = newSessionState;
                 localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+                
+                console.log('Next round created:', newSessionState.roundNumber, 'with', freshLocationParticipants.length, 'participants');
             }
             
+            // Reset für alle Teilnehmer
+            currentRoundNumber = 0;
+            sessionActive = false;
+            
             setTimeout(() => {
+                sessionActive = true;  // Setze wieder auf true für die neue Runde
                 startRound();
             }, 1000);
         }
@@ -1407,6 +1431,7 @@
             };
             localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
             sessionActive = false;
+            currentRoundNumber = 0;
             stopChatSync();
             showScreen('lobby-screen');
             updateParticipantsList();
@@ -1464,6 +1489,7 @@
             currentLocation = null;
             sessionActive = false;
             currentChatRoom = null;
+            currentRoundNumber = 0;
             
             showScreen('checkin-screen');
             document.getElementById('name-input').value = '';
