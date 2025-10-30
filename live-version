@@ -1,0 +1,2563 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <title>Speed Networking - Café Meet</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            font-weight: bold;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .participants-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .participant {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+
+        .timer {
+            font-size: 3em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 30px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .timer.warning {
+            color: #e74c3c;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .partner-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .partner-name {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .question-card {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .question-card h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .question-card p {
+            color: #856404;
+            line-height: 1.6;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            background: #28a745;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 10px 0;
+        }
+
+        .round-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            color: #1976d2;
+            font-weight: bold;
+        }
+
+        .bell-animation {
+            font-size: 4em;
+            animation: ring 0.5s ease-in-out 3;
+        }
+
+        @keyframes ring {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-15deg); }
+            75% { transform: rotate(15deg); }
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        /* Chat Styles */
+        .chat-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            height: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .chat-message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .chat-message.own {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .chat-message.other {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        .chat-message .sender {
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .chat-send-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: auto;
+        }
+
+        .chat-send-btn:hover {
+            background: #5568d3;
+        }
+
+        /* Admin Panel Styles */
+        .admin-section {
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .admin-section h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .questions-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .question-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .question-item button {
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .locations-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .location-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .location-item button {
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .save-btn {
+            background: #28a745;
+            margin-top: 10px;
+        }
+
+        .back-btn {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* Admin Login */
+        .admin-login {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .admin-login h2 {
+            color: #009892;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .admin-login input[type="password"] {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+
+        .admin-login button {
+            width: 100%;
+            background: #009892;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .admin-login button:hover {
+            background: #007d77;
+        }
+
+        .error-message {
+            color: #c30059;
+            background: #ffe0eb;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+            display: none;
+        }
+
+        /* QR Code Container */
+        .qr-code-display {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .qr-code-display canvas {
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .pagination button {
+            width: auto;
+            padding: 8px 15px;
+            font-size: 14px;
+            background: #009892;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .pagination span {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Search Input */
+        .search-input {
+            margin-bottom: 15px;
+        }
+
+        .search-input input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        /* Location Card */
+        .location-card {
+            background: white;
+            border: 2px solid #009892;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+
+        .location-card h4 {
+            color: #009892;
+            margin-bottom: 15px;
+        }
+
+        .location-card .link-box {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            padding: 8px 15px;
+            font-size: 13px;
+            width: auto;
+            margin-top: 10px;
+        }
+
+        /* Mobile Optimierung */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                max-width: 100%;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 1.5em;
+            }
+            
+            .partner-name {
+                font-size: 1.5em;
+            }
+            
+            .timer {
+                font-size: 2.5em;
+            }
+            
+            .admin-login {
+                margin: 20px;
+                padding: 25px;
+            }
+            
+            .question-item,
+            .location-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .question-item button,
+            .location-item button {
+                width: 100%;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Check-in Screen -->
+        <div id="checkin-screen" class="screen">
+            <h1>🎯 Speed Networking</h1>
+            <p class="subtitle">Willkommen im Café Meet!</p>
+            
+            <div class="info-box">
+                <strong>So funktioniert's:</strong><br>
+                • Wähle deinen Standort<br>
+                • Gib deinen Namen ein<br>
+                • Alle Geräte piepen gleichzeitig<br>
+                • Chatte mit deinem Gesprächspartner<br>
+                • Nach <span id="duration-display">10</span> Minuten zur nächsten Person!
+            </div>
+
+            <div id="location-info" style="display: none; background: #009892; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-weight: bold;">
+                <span id="location-name"></span>
+            </div>
+
+            <input type="text" id="name-input" placeholder="Dein Name" maxlength="30">
+            <button id="checkin-btn" onclick="checkIn()">Einchecken 📱</button>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="screen">
+            <h1>⏳ Lobby</h1>
+            <p class="subtitle">Warte auf andere Teilnehmer...</p>
+            
+            <div class="status-badge">✓ Eingecheckt</div>
+            <div class="status-badge" id="location-badge"></div>
+            
+            <div class="timer" id="lobby-timer" style="font-size: 2em; margin: 20px 0; display: none;">--:--</div>
+            
+            <div class="participants-list" id="participants-list"></div>
+            
+            <p style="color: #666; margin: 20px 0;">
+                Die Runde startet automatisch, wenn mindestens 2 Personen eingecheckt sind.
+            </p>
+            
+            <button class="logout-btn" onclick="logout()">Auschecken</button>
+        </div>
+
+        <!-- Matching Screen -->
+        <div id="matching-screen" class="screen">
+            <div class="bell-animation" id="bell">🔔</div>
+            <h1>Es geht los!</h1>
+            <p class="subtitle">Dein Gesprächspartner wartet...</p>
+        </div>
+
+        <!-- Conversation Screen -->
+        <div id="conversation-screen" class="screen">
+            <div class="round-info" id="round-info">Runde 1</div>
+            
+            <h2>Dein Gesprächspartner:</h2>
+                    <button onclick="reportInactive()" style="background: #ffc107; font-size: 0.85em; padding: 8px 15px; margin-bottom: 10px;">
+                ⚠️ Partner inaktiv melden
+            </button>
+            <div class="partner-card">
+                <div class="partner-name" id="partner-name">---</div>
+                <p>Viel Spaß beim Kennenlernen! 😊</p>
+            </div>
+            
+            <div class="question-card">
+                <h3>💭 Gesprächsthema:</h3>
+                <p id="conversation-question">---</p>
+            </div>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages"></div>
+                <div class="chat-input-container">
+                    <input type="text" 
+                           class="chat-input" 
+                           id="chat-input" 
+                           placeholder="Nachricht eingeben..." 
+                           maxlength="200"
+                           onkeypress="handleChatKeypress(event)">
+                    <button class="chat-send-btn" onclick="sendChatMessage()">📤</button>
+                </div>
+            </div>
+            
+            <div class="timer" id="timer">10:00</div>
+            
+            <button class="logout-btn" onclick="logout()">Auschecken</button>
+        </div>
+
+        <!-- Activity Check Screen -->
+        <div id="activity-check-screen" class="screen">
+            <div class="bell-animation">🔔</div>
+            <h1>Bist du noch da?</h1>
+            <p class="subtitle">Dein Gesprächspartner hat dich als inaktiv gemeldet.</p>
+            
+            <button onclick="confirmActivity()" style="background: #28a745;">
+                ✓ Ja, ich bin noch da!
+            </button>
+            
+            <div id="activity-timeout-warning" style="display: none; background: #fff3cd; padding: 15px; border-radius: 10px; margin-top: 20px;">
+                <strong>⏸️ Du wurdest von der nächsten Runde ausgeschlossen</strong><br>
+                <span style="font-size: 0.9em; color: #856404;">
+                    Möchtest du wieder mitmachen? Lade einfach die Seite neu (F5) und checke dich erneut ein.
+                </span>
+                <button onclick="location.reload()" style="background: #009892; margin-top: 10px; width: 100%;">
+                    🔄 Seite neu laden
+                </button>
+            </div>
+            
+            <p style="color: #666; font-size: 0.9em; margin-top: 20px;">
+                Wenn du nicht antwortest, wirst du bei der nächsten Runde ausgeschlossen.
+            </p>
+        </div>
+
+        <!-- Waiting Screen -->
+        <div id="waiting-screen" class="screen">
+            <h1>⏸️ Pause</h1>
+            <p class="subtitle">Warte auf die nächste Runde...</p>
+            
+            <div class="timer" id="waiting-timer" style="font-size: 2em; margin: 20px 0;">--:--</div>
+            
+            <div class="participants-list" id="waiting-participants-list"></div>
+            
+            <p style="color: #666; margin: 20px 0;">
+                Die nächste Runde beginnt gleich!
+            </p>
+            
+            <button class="logout-btn" onclick="logout()">Auschecken</button>
+        </div>
+
+        <!-- Admin Login -->
+        <div id="admin-login-screen" class="screen">
+            <div class="admin-login">
+                <h2>🔐 Admin Login</h2>
+                <div class="error-message" id="login-error">Falsches Passwort!</div>
+                <input type="password" id="admin-password" placeholder="Admin-Passwort eingeben">
+                <button onclick="adminLogin()">Anmelden</button>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="admin-screen" class="screen">
+            <h1>⚙️ Admin Panel</h1>
+            <p class="subtitle">Zentrale Verwaltung</p>
+
+        <!-- Standort-Auswahl -->
+        <div class="admin-section">
+            <h3>📍 Standort auswählen</h3>
+            <div class="form-group">
+                <select id="admin-location-select" onchange="loadLocationSettings()">
+                    <option value="">-- Standort wählen --</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Standort-Details -->
+        <div id="location-details" style="display: none;">
+            <!-- Session Duration -->
+            <div class="admin-section">
+                <h3>⏱️ Session-Dauer für diesen Standort</h3>
+                <div class="form-group">
+                    <label>Dauer pro Runde (Minuten)</label>
+                    <select id="admin-duration">
+                        <option value="1">1 Minute</option>
+                        <option value="3">3 Minuten</option>
+                        <option value="5">5 Minuten</option>
+                        <option value="10" selected>10 Minuten</option>
+                        <option value="15">15 Minuten</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- QR Code & Link -->
+            <div class="admin-section">
+                <h3>🔗 Teilnehmer-Link & QR-Code</h3>
+                <div class="location-card" id="location-link-card">
+                    <div class="link-box" id="participant-link"></div>
+                    <button class="copy-btn" onclick="copyParticipantLink()">📋 Link kopieren</button>
+                    <div class="qr-code-display" id="qr-code-container"></div>
+                </div>
+            </div>
+
+            <!-- Questions -->
+            <div class="admin-section">
+                <h3>💭 Gesprächsfragen für diesen Standort</h3>
+                <div class="questions-list" id="questions-list"></div>
+                <textarea id="new-question-input" placeholder="Neue Frage eingeben..."></textarea>
+                <button onclick="addQuestionToLocation()">Frage hinzufügen</button>
+                <button onclick="showQuestionLibrary()" style="background: #009892; margin-top: 5px;">📚 Aus Bibliothek wählen</button>
+            </div>
+
+            <!-- Standorte Verwalten -->
+            <div class="admin-section" style="border-top: 2px solid #e0e0e0; padding-top: 30px; margin-top: 30px;">
+                <h3>📍 Standorte verwalten</h3>
+                <div class="locations-list" id="locations-list"></div>
+                <input type="text" id="new-location-input" placeholder="Neuer Standort...">
+                <button onclick="addLocation()">Standort hinzufügen</button>
+            </div>
+
+            <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
+            <button class="back-btn" onclick="adminLogout()">🚪 Logout</button>
+        </div>
+        <!-- Session Control -->
+            <div class="admin-section" style="border-top: 2px solid #e0e0e0; padding-top: 20px; margin-top: 20px;">
+                <h3>🎮 Session-Steuerung für diesen Standort</h3>
+                <div id="session-status" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <p><strong>Status:</strong> <span id="session-status-text">Lädt...</span></p>
+                    <p><strong>Teilnehmer:</strong> <span id="session-participants-count">0</span></p>
+                    <p><strong>Aktuelle Runde:</strong> <span id="session-round-number">-</span></p>
+                </div>
+                <button id="start-session-btn" onclick="adminStartSession()" style="background: #28a745;">
+                    🚀 Session jetzt starten
+                </button>
+                <button id="stop-session-btn" onclick="adminStopSession()" style="background: #dc3545; margin-top: 10px;">
+                    ⏹️ Session beenden
+                </button>
+                <button id="auto-mode-btn" onclick="enableAutoMode()" style="background: #6c757d; margin-top: 10px; display: none;">
+                    🔄 Automatischen Modus aktivieren
+                </button>
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    ⚠️ Im manuellen Modus startet die Session nur durch Admin-Klick.
+                </p>
+            </div>
+    </div>
+
+    <script>
+        // DEBUG: Routing testen
+        console.log('=== PAGE LOAD ===');
+        console.log('URL:', window.location.href);
+        console.log('Hash:', window.location.hash);
+        console.log('Search:', window.location.search);
+
+        // Sofortiger Admin-Check beim Laden
+        if (window.location.hash === '#admin') {
+            console.log('Admin hash detected on load!');
+        }
+        // Konfiguration
+        const ADMIN_PASSWORD_HASH = 'swaf2024'; // TODO: In Produktion durch echten Hash ersetzen
+        let isAdminAuthenticated = false;
+
+        let config = {
+            roundDuration: 10, // in Minuten
+            locations: ['Café Central', 'Büro Berlin', 'CoWorking Köln'],
+            questions: [
+                "Was war dein bestes Erlebnis in den letzten 30 Tagen?",
+                "Wenn du eine Fähigkeit sofort perfekt beherrschen könntest - welche wäre es?",
+                "Was ist deine Lieblings-Art, deine Freizeit zu verbringen?",
+                "Welches Buch oder welcher Film hat dich zuletzt beeindruckt?",
+                "Wenn du irgendwohin reisen könntest - wohin würdest du gehen?",
+                "Was motiviert dich am meisten im Leben?",
+                "Welche drei Dinge würdest du auf eine einsame Insel mitnehmen?",
+                "Was war die beste Entscheidung, die du je getroffen hast?",
+                "Wenn du ein Talent hättest, das niemand kennt - welches wäre es?",
+                "Was steht ganz oben auf deiner Bucket List?"
+            ]
+        };
+
+        let currentUser = null;
+        let sessionActive = false;
+        let currentLocation = null;
+        let currentSessionId = null;
+        let sessionStartLock = false;
+        let currentRoundNumber = 0;
+        let roundTimer = null;
+        let syncInterval = null;
+        let chatSyncInterval = null;
+        let currentChatRoom = null;
+        let visibilityCheckInterval = null;
+        let lastVisibilityState = document.visibilityState;
+        let currentPartner = null;
+        let waitingTimerInterval = null;
+
+        // Backend-Verbindung
+        const BACKEND_URL = 'https://api.swaf.koeln';
+        let socket = null;
+
+        // Socket.io initialisieren
+        function initSocket() {
+            if (!socket) {
+                socket = io(BACKEND_URL);
+                
+                socket.on('connect', () => {
+                    console.log('Mit Backend verbunden');
+                    if (currentLocation) {
+                        socket.emit('join-location', currentLocation);
+                    }
+                });
+                
+                socket.on('new-message', (data) => {
+                    if (data.chatRoom === currentChatRoom) {
+                        updateChatMessages();
+                    }
+                });
+                
+                socket.on('participant-update', () => {
+                    updateParticipantsList();
+                });
+                
+                socket.on('session-changed', () => {
+                    checkSessionState();
+                });
+            }
+        }
+
+        // Admin Login
+        function adminLogin() {
+            const password = document.getElementById('admin-password').value;
+            const errorMsg = document.getElementById('login-error');
+            
+            // TODO: In Produktion durch sichere Hash-Vergleich ersetzen
+            if (password === ADMIN_PASSWORD_HASH) {
+                isAdminAuthenticated = true;
+                sessionStorage.setItem('adminAuth', 'true');
+                showScreen('admin-screen');
+                loadAdminSettings();
+            } else {
+                errorMsg.style.display = 'block';
+                setTimeout(() => {
+                    errorMsg.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Admin Auth Check
+        function checkAdminAuth() {
+            return sessionStorage.getItem('adminAuth') === 'true';
+        }
+
+        function initStorage() {
+            // Config laden oder initialisieren
+            const savedConfig = localStorage.getItem('appConfig');
+            if (savedConfig) {
+                config = JSON.parse(savedConfig);
+            } else {
+                // Standort-spezifische Configs initialisieren
+                const locationConfigs = {};
+                config.locations.forEach(loc => {
+                    locationConfigs[loc] = {
+                        roundDuration: config.roundDuration,
+                        questions: [...config.questions]
+                    };
+                });
+                config.locationConfigs = locationConfigs;
+                localStorage.setItem('appConfig', JSON.stringify(config));
+            }
+            
+            // Backend-Verbindung initialisieren
+            initSocket();
+        }
+
+
+        // Duration Display aktualisieren
+        function updateDurationDisplay() {
+            const display = document.getElementById('duration-display');
+            if (display && currentLocation) {
+                if (config.locationConfigs && config.locationConfigs[currentLocation]) {
+                    display.textContent = config.locationConfigs[currentLocation].roundDuration;
+                } else {
+                    display.textContent = config.roundDuration;
+                }
+            }
+        }
+
+        // Admin Locations Select laden
+        function loadAdminLocationsSelect() {
+            const select = document.getElementById('admin-location-select');
+            if (!select) return;
+            
+            select.innerHTML = '<option value="">-- Standort wählen --</option>';
+            config.locations.forEach(loc => {
+                const option = document.createElement('option');
+                option.value = loc;
+                option.textContent = loc;
+                select.appendChild(option);
+            });
+        }
+
+
+        // Check-in
+        async function checkIn() {
+            const name = document.getElementById('name-input').value.trim();
+            const urlParams = new URLSearchParams(window.location.search);
+            const location = urlParams.get('location');
+
+            if (!location) {
+                alert('Fehler: Kein Standort ausgewählt!');
+                return;
+            }
+
+            if (!name) {
+                alert('Bitte gib deinen Namen ein!');
+                return;
+            }
+
+            // Prüfe ob Name bereits verwendet wird
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/participants/${location}`);
+                const locationParticipants = await response.json();
+                
+                if (locationParticipants.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+                    alert('Dieser Name ist bereits am Standort vergeben. Bitte wähle einen anderen Namen.');
+                    return;
+                }
+            } catch (error) {
+                console.error('Fehler beim Prüfen der Teilnehmer:', error);
+            }
+
+            const userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            currentUser = {
+                id: userId,
+                name: name,
+                joinedAt: Date.now(),
+                lastActivity: Date.now()
+            };
+            currentLocation = location;
+
+            console.log('Checked in as:', currentUser.name, 'at location:', location);
+
+            // An Backend senden
+            socket.emit('participant-checkin', {
+                id: currentUser.id,
+                name: currentUser.name,
+                location: location
+            });
+            
+            document.getElementById('location-badge').textContent = '📍 ' + location;
+            
+            showScreen('lobby-screen');
+            updateParticipantsList();
+            startSync();
+            startVisibilityCheck();
+        }
+
+        // Visibility Check - erkennt nur echtes Tab-Schließen
+        function startVisibilityCheck() {
+            // Cleanup bei Page Unload (echter Tab-Schluss)
+            window.addEventListener('beforeunload', handlePageUnload);
+        }
+
+        // Heartbeat aktualisieren
+        function updateHeartbeat() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            
+            const userIndex = locationParticipants.findIndex(p => p.id === currentUser.id);
+            if (userIndex !== -1) {
+                locationParticipants[userIndex].lastActivity = Date.now();
+                socket.emit('participant-checkout', {
+                    id: currentUser.id,
+                    location: currentLocation
+                });
+            }
+        }
+
+        // Partner als inaktiv melden
+        function reportInactive() {
+            if (!currentPartner || !currentPartner.id) {
+                alert('Kein Gesprächspartner gefunden.');
+                return;
+            }
+            
+            const partnerId = currentPartner.id;
+            
+            // Inaktiv-Meldung in localStorage (temporär für diese Funktion OK)
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            if (!inactiveReports[partnerId]) {
+                inactiveReports[partnerId] = [];
+            }
+            inactiveReports[partnerId].push({
+                reportedBy: currentUser.id,
+                reporterName: currentUser.name,
+                timestamp: Date.now()
+            });
+            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+            
+            alert('Partner wurde als inaktiv gemeldet.');
+        }
+
+        // Aktivitäts-Check bei gemeldeten Usern
+        function checkIfReported() {
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            
+            if (inactiveReports[currentUser.id] && inactiveReports[currentUser.id].length > 0) {
+                const reportTime = inactiveReports[currentUser.id][0].timestamp;
+                const now = Date.now();
+                const timeSinceReport = now - reportTime;
+                
+                // Nur anzeigen wenn Meldung aktuell ist (< 5 Minuten)
+                if (timeSinceReport < 300000) {
+                    // Wurde gemeldet - Bestätigung anfordern
+                    if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                        showScreen('activity-check-screen');
+                        playNotificationSound();
+                    }
+                    
+                    // Zeige Timeout-Warning nach 30 Sekunden
+                    const timeoutWarning = document.getElementById('activity-timeout-warning');
+                    if (timeSinceReport > 30000) {
+                        timeoutWarning.style.display = 'block';
+                    } else {
+                        timeoutWarning.style.display = 'none';
+                    }
+                } else {
+                    // Alte Meldung - automatisch löschen
+                    delete inactiveReports[currentUser.id];
+                    localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+                }
+            }
+        }
+
+        // User bestätigt Aktivität
+        function confirmActivity() {
+            // Meldungen löschen
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            delete inactiveReports[currentUser.id];
+            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+            
+            // Zurück zum normalen Flow
+            const sessionState = JSON.parse(localStorage.getItem('sessionState'));
+            if (sessionState && sessionState.active) {
+                checkSessionState();
+            } else {
+                showScreen('lobby-screen');
+            }
+        }
+
+        // Gemeldete inaktive User aus Matching entfernen
+        function removeReportedInactiveUsers() {
+            // Diese Funktion wird nicht mehr benötigt, da die Prüfung direkt in createMatches() erfolgt
+            // Aber wir behalten sie für Kompatibilität und mögliche zukünftige Cleanup-Aufgaben
+            
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            const now = Date.now();
+            
+            // Alte Meldungen (>5 Minuten) löschen, um LocalStorage sauber zu halten
+            Object.keys(inactiveReports).forEach(userId => {
+                inactiveReports[userId] = inactiveReports[userId].filter(report => {
+                    return (now - report.timestamp) < 300000; // 5 Minuten
+                });
+                
+                if (inactiveReports[userId].length === 0) {
+                    delete inactiveReports[userId];
+                }
+            });
+            
+            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+        }
+
+        // Page Unload - echter Tab-Schluss
+        function handlePageUnload(e) {
+            if (currentUser && currentLocation) {
+                logout(true);
+            }
+        }
+
+
+        // Synchronisation starten
+        function startSync() {
+            syncInterval = setInterval(async () => {
+                if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                    checkIfReported();
+                }
+                
+                try {
+                    const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                    const sessionState = await sessionResponse.json();
+                    
+                    const amIInMatches = sessionState && 
+                                        sessionState.matches && 
+                                        sessionState.matches[currentUser.id] !== undefined;
+
+                    if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                        if (sessionState && sessionState.active) {
+                            const currentScreen = document.querySelector('.screen.active').id;
+                            
+                            if (amIInMatches) {
+                                if (currentScreen !== 'conversation-screen') {
+                                    showScreen('matching-screen');
+                                    setTimeout(() => {
+                                        checkSessionState();
+                                    }, 2000);
+                                }
+                            } else {
+                                if (currentScreen !== 'waiting-screen') {
+                                    checkSessionState();
+                                }
+                            }
+                        } else {
+                            if (document.getElementById('conversation-screen').classList.contains('active') ||
+                                document.getElementById('waiting-screen').classList.contains('active')) {
+                                showScreen('lobby-screen');
+                                updateParticipantsList();
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Fehler bei der Synchronisation:', error);
+                }
+            }, 1000);
+        }
+
+        // Chat-Synchronisation starten
+        function startChatSync() {
+            chatSyncInterval = setInterval(() => {
+                if (currentChatRoom) {
+                    updateChatMessages();
+                }
+            }, 500);
+        }
+
+        // Chat-Synchronisation stoppen
+        function stopChatSync() {
+            if (chatSyncInterval) {
+                clearInterval(chatSyncInterval);
+                chatSyncInterval = null;
+            }
+        }
+
+        // Chat-Nachricht senden
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            
+            if (!message || !currentChatRoom) return;
+
+            const chatMessage = {
+                chatRoom: currentChatRoom,
+                senderId: currentUser.id,
+                senderName: currentUser.name,
+                message: message,
+                location: currentLocation
+            };
+            
+            socket.emit('chat-message', chatMessage);
+            input.value = '';
+        }
+
+        // Enter-Taste im Chat
+        function handleChatKeypress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        // Chat-Nachrichten aktualisieren
+        async function updateChatMessages() {
+            const messagesContainer = document.getElementById('chat-messages');
+            if (!currentChatRoom) return;
+
+            const response = await fetch(`${BACKEND_URL}/api/chats/${currentChatRoom}`);
+            const messages = await response.json();
+
+            messagesContainer.innerHTML = '';
+            
+            if (messages.length === 0) {
+                messagesContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Noch keine Nachrichten. Sag Hallo! 👋</p>';
+                return;
+            }
+            
+            messages.forEach(msg => {
+                console.log('Message:', msg.senderName, 'CurrentUser:', currentUser.name, 'IDs:', msg.senderId, currentUser.id); // Debug
+                const isOwnMessage = msg.senderId === currentUser.id;
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = isOwnMessage ? 'chat-message own' : 'chat-message other';
+                
+                const senderDiv = document.createElement('div');
+                senderDiv.className = 'sender';
+                senderDiv.textContent = isOwnMessage ? 'Du' : msg.senderName;
+                
+                const textDiv = document.createElement('div');
+                textDiv.textContent = msg.message;
+                
+                messageDiv.appendChild(senderDiv);
+                messageDiv.appendChild(textDiv);
+                messagesContainer.appendChild(messageDiv);
+            });
+
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Chat löschen
+        function clearChat(chatRoom) {
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            delete chats[chatRoom];
+            localStorage.setItem('chats', JSON.stringify(chats));
+        }
+
+        // Alle Chats für einen Standort löschen
+        function clearAllChatsForLocation(location) {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[location] || [];
+            const participantIds = locationParticipants.map(p => p.id);
+            
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            
+            // Finde alle Chat-Räume, die zu diesem Standort gehören
+            Object.keys(chats).forEach(chatRoom => {
+                const roomUserIds = chatRoom.split('_');
+                const belongsToLocation = roomUserIds.some(id => participantIds.includes(id));
+                
+                if (belongsToLocation) {
+                    console.log('Deleting chat room:', chatRoom);
+                    delete chats[chatRoom];
+                }
+            });
+            
+            localStorage.setItem('chats', JSON.stringify(chats));
+        }
+
+        // Prüfe Start-Bedingungen
+        function checkStartConditions() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            
+            // Wenn Session unter manueller Kontrolle ist, nicht automatisch starten
+            if (sessionState && sessionState.manualControl) {
+                return;
+            }
+            
+            // Prüfe ob ich der Coordinator bin (ältester User)
+            const isCoordinator = locationParticipants.length > 0 && 
+                                  locationParticipants[0].id === currentUser.id;
+            
+            if (isCoordinator && locationParticipants.length >= 2 && (!sessionState || !sessionState.active)) {
+                // Lock setzen um doppelten Start zu verhindern
+                if (sessionStartLock) {
+                    console.log('Session start already in progress, skipping...');
+                    return;
+                }
+                
+                sessionStartLock = true;
+                
+                setTimeout(() => {
+                    const currentParticipants = JSON.parse(localStorage.getItem('participants'));
+                    const currentLocationParticipants = currentParticipants[currentLocation] || [];
+                    const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                    const currentSessionState = currentSessionStates[currentLocation];
+                    
+                    if (currentLocationParticipants.length >= 2 && 
+                        (!currentSessionState || !currentSessionState.active) &&
+                        currentLocationParticipants[0].id === currentUser.id) {
+                        
+                        console.log('Coordinator starting session:', currentUser.name);
+                        startSession();
+                    }
+                    
+                    sessionStartLock = false;
+                }, 3000);
+            }
+        }
+
+        // Session starten
+        function startSession() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            
+            // Verhindern von doppeltem Start
+            if (sessionState && sessionState.active) {
+                console.log('Session already active, aborting start');
+                return;
+            }
+            
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            if (locationParticipants.length < 2) return;
+            
+            // Config neu laden um sicherzustellen, dass wir die aktuellste Dauer haben
+            const savedConfig = localStorage.getItem('appConfig');
+            if (savedConfig) {
+                config = JSON.parse(savedConfig);
+            }
+            
+            // Lade standort-spezifische Dauer
+            const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                ? config.locationConfigs[currentLocation] 
+                : config;
+            
+            const matches = createMatches(locationParticipants);
+            
+            // Alte Chats für diesen Standort löschen
+            clearAllChatsForLocation(currentLocation);
+            
+            // Eindeutige Session-ID generieren
+            const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
+            const newSessionState = {
+                active: true,
+                sessionId: sessionId,
+                roundNumber: 1,
+                roundStartTime: Date.now(),
+                matches: matches,
+                roundDuration: locationConfig.roundDuration  // Speichere Dauer im Session State
+            };
+            
+            sessionStates[currentLocation] = newSessionState;
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+        }
+
+        // Paarungen erstellen
+        function createMatches(participants) {
+            console.log('createMatches called with participants:', participants.map(p => p.name));
+            
+            // Gemeldete inaktive User identifizieren
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            const now = Date.now();
+            
+            // Markiere gemeldete User, die nicht bestätigt haben (>30 Sekunden alt)
+            const activeParticipants = participants.filter(p => {
+                if (inactiveReports[p.id] && inactiveReports[p.id].length > 0) {
+                    const reportTime = inactiveReports[p.id][0].timestamp;
+                    const timeSinceReport = now - reportTime;
+                    
+                    if (timeSinceReport > 30000) {
+                        console.log('Excluding reported inactive user:', p.name, 'Report age:', Math.round(timeSinceReport/1000), 'seconds');
+                        return false; // User ausschließen
+                    }
+                }
+                return true; // User ist aktiv
+            });
+            
+            console.log('Active participants after filtering:', activeParticipants.map(p => p.name));
+            
+            const shuffled = [...activeParticipants].sort(() => Math.random() - 0.5);
+            const matches = {};
+            
+            console.log('Shuffled order:', shuffled.map(p => p.name));
+            
+            for (let i = 0; i < shuffled.length; i += 2) {
+                if (i + 1 < shuffled.length) {
+                    const user1 = shuffled[i];
+                    const user2 = shuffled[i + 1];
+                    const chatRoomId = [user1.id, user2.id].sort().join('_');
+                    
+                    console.log(`Pairing: ${user1.name} <-> ${user2.name}`);
+                    
+                    matches[user1.id] = {
+                        partnerId: user2.id,
+                        partnerName: user2.name,
+                        chatRoom: chatRoomId
+                    };
+                    matches[user2.id] = {
+                        partnerId: user1.id,
+                        partnerName: user1.name,
+                        chatRoom: chatRoomId
+                    };
+                } else {
+                    console.log(`${shuffled[i].name} hat keinen Partner (ungerade Anzahl)`);
+                    matches[shuffled[i].id] = {
+                        partnerId: null,
+                        partnerName: null,
+                        chatRoom: null
+                    };
+                }
+            }
+            
+            return matches;
+        }
+
+        // Runde starten
+        function startRound() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            
+            // Prüfen ob Session-ID sich geändert hat (neue Session vom Admin)
+            if (currentSessionId && sessionState.sessionId !== currentSessionId) {
+                console.log('New session detected, resetting round counter...');
+                currentSessionId = sessionState.sessionId;
+                currentRoundNumber = 0;  // WICHTIG: Reset bei neuer Session!
+                stopChatSync();
+                if (currentChatRoom) {
+                    clearChat(currentChatRoom);
+                    currentChatRoom = null;
+                }
+            } else if (!currentSessionId) {
+                currentSessionId = sessionState.sessionId;
+            }
+            
+            // Verhindern von mehrfachem Aufruf derselben Runde
+            if (currentRoundNumber === sessionState.roundNumber) {
+                console.log('Round already started, skipping...', sessionState.roundNumber);
+                return;
+            }
+            
+            currentRoundNumber = sessionState.roundNumber;
+            console.log('Starting round:', currentRoundNumber, 'of session:', currentSessionId);
+            
+            showScreen('matching-screen');
+            playNotificationSound();
+            
+            setTimeout(() => {
+                const match = sessionState.matches[currentUser.id];
+                
+                console.log('My match:', match);
+                
+                // Validiere dass das Match symmetrisch ist
+                if (match && match.partnerId) {
+                    const partnerMatch = sessionState.matches[match.partnerId];
+                    console.log('Partner match:', partnerMatch);
+                    
+                    if (partnerMatch && partnerMatch.partnerId !== currentUser.id) {
+                        console.error('ASYMMETRIC MATCH DETECTED!', 
+                                      'My partner:', match.partnerName, 
+                                      'Their partner:', partnerMatch.partnerName);
+                        alert('Fehler bei der Paarung erkannt! Bitte Admin informieren.');
+                        return;
+                    }
+                    
+                    currentChatRoom = match.chatRoom;
+                    currentPartner = {
+                        id: match.partnerId,
+                        name: match.partnerName
+                    };
+
+                    document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
+                    document.getElementById('partner-name').textContent = match.partnerName;
+                    const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                        ? config.locationConfigs[currentLocation] 
+                        : config;
+                    const questions = locationConfig.questions || config.questions;
+                    document.getElementById('conversation-question').textContent = 
+                        questions[Math.floor(Math.random() * questions.length)];
+                    
+                    document.getElementById('chat-messages').innerHTML = '';
+                    document.getElementById('chat-input').value = '';
+                    
+                    showScreen('conversation-screen');
+                    startTimer(sessionState.roundStartTime);
+                    startChatSync();
+                    updateChatMessages();
+                } else {
+                    // Kein Partner in dieser Runde
+                    currentChatRoom = null;
+                    showScreen('waiting-screen');
+                    updateWaitingParticipantsList();
+                    
+                    console.log('No partner for this round, waiting...');
+                    
+                    // Timer für Waiting Screen starten
+                    const roundDuration = sessionState.roundDuration || 10;
+                    startWaitingTimer(sessionState.roundStartTime, roundDuration);
+                    
+                    // Berechne verbleibende Zeit basierend auf roundDuration im sessionState
+                    const timeLeft = roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
+                    console.log('Time left until next round:', Math.round(timeLeft / 1000), 'seconds');
+                    
+                    if (timeLeft > 0) {
+                        setTimeout(() => {
+                            checkForNextRound();
+                        }, timeLeft);
+                    } else {
+                        // Zeit ist schon abgelaufen, sofort zur nächsten Runde
+                        checkForNextRound();
+                    }
+                }
+            }, 2000);
+        }
+
+        // Waiting Timer starten (für Lobby und Waiting Screen)
+        function startWaitingTimer(roundStartTime, roundDuration) {
+            // Alten Timer stoppen falls vorhanden
+            if (waitingTimerInterval) {
+                clearInterval(waitingTimerInterval);
+            }
+            
+            const waitingTimerElement = document.getElementById('waiting-timer');
+            const lobbyTimerElement = document.getElementById('lobby-timer');
+            
+            const updateTimer = () => {
+                    const now = Date.now();
+                    const elapsed = now - roundStartTime;
+                    const totalDuration = roundDuration * 60 * 1000;
+                    const remaining = Math.max(0, totalDuration - elapsed);
+                    
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    if (waitingTimerElement) {
+                        waitingTimerElement.textContent = timeText;
+                        if (remaining <= 0) {
+                            waitingTimerElement.textContent = 'Gleich geht\'s los...';
+                        }
+                    }
+                    
+                    if (lobbyTimerElement) {
+                        lobbyTimerElement.style.display = 'block';
+                        lobbyTimerElement.textContent = timeText;
+                        if (remaining <= 0) {
+                            lobbyTimerElement.textContent = 'Gleich geht\'s los...';
+                        }
+                    }
+                    
+                    if (remaining <= 0) {
+                        clearInterval(waitingTimerInterval);
+                    }
+                };
+            
+            updateTimer(); // Sofort einmal ausführen
+            waitingTimerInterval = setInterval(updateTimer, 1000);
+        }
+
+        // Waiting Timer stoppen
+        function stopWaitingTimer() {
+            if (waitingTimerInterval) {
+                clearInterval(waitingTimerInterval);
+                waitingTimerInterval = null;
+            }
+        }
+
+        // Timer starten
+        function startTimer(startTime) {
+            const timerElement = document.getElementById('timer');
+            
+            // Lade Dauer aus dem Session State (wurde beim Start gespeichert)
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            const roundDuration = sessionState && sessionState.roundDuration 
+                ? sessionState.roundDuration 
+                : (config.locationConfigs && config.locationConfigs[currentLocation] 
+                    ? config.locationConfigs[currentLocation].roundDuration 
+                    : config.roundDuration);
+            
+            console.log('Timer Start - Location:', currentLocation);
+            console.log('Session State roundDuration:', sessionState?.roundDuration);
+            console.log('Config roundDuration:', config.locationConfigs?.[currentLocation]?.roundDuration);
+            console.log('Using roundDuration:', roundDuration, 'minutes');
+            
+            const ROUND_DURATION = roundDuration * 60 * 1000;
+            function updateTimer() {
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, ROUND_DURATION - elapsed);
+                
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                
+                timerElement.textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (remaining < 60000) {
+                    timerElement.classList.add('warning');
+                } else {
+                    timerElement.classList.remove('warning');
+                }
+                
+                if (remaining === 0) {
+                    clearInterval(roundTimer);
+                    stopChatSync();
+                    
+                    // Chat löschen
+                    if (currentChatRoom) {
+                        clearChat(currentChatRoom);
+                        currentChatRoom = null;
+                    }
+                    
+                    checkForNextRound();
+                }
+            }
+            
+            updateTimer();
+            roundTimer = setInterval(updateTimer, 100);
+        }
+
+
+        // Nächste Runde prüfen
+        function checkForNextRound() {
+            console.log('checkForNextRound called for user:', currentUser.name);
+            
+            // Warte kurz damit alle Clients den Timer beenden
+            setTimeout(() => {
+                const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                const sessionState = sessionStates[currentLocation];
+                
+                // Hole FRISCHE Teilnehmerliste
+                const participants = JSON.parse(localStorage.getItem('participants'));
+                const locationParticipants = participants[currentLocation] || [];
+                
+                console.log('Participants for next round:', locationParticipants.map(p => p.name));
+                
+                if (locationParticipants.length < 2) {
+                    endSession();
+                    return;
+                }
+                
+                // Prüfe ob ich der Coordinator bin
+                const isCoordinator = locationParticipants.length > 0 && 
+                                      locationParticipants[0].id === currentUser.id;
+                
+                console.log('Is coordinator?', isCoordinator, 'User:', currentUser.name);
+                
+                if (isCoordinator) {
+                    // Prüfe ob schon jemand die nächste Runde erstellt hat
+                    const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                    const currentSessionState = currentSessionStates[currentLocation];
+                    
+                    if (currentSessionState.roundNumber > sessionState.roundNumber) {
+                        console.log('Next round already created by another client');
+                        return;
+                    }
+                    
+                    // NOCHMAL frische Teilnehmerliste holen (sicher ist sicher!)
+                    const finalParticipants = JSON.parse(localStorage.getItem('participants'));
+                    const finalLocationParticipants = finalParticipants[currentLocation] || [];
+                    
+                    console.log('Coordinator creating matches for', finalLocationParticipants.length, 'participants:', 
+                                finalLocationParticipants.map(p => p.name));
+                    
+                    const matches = createMatches(finalLocationParticipants);
+                    
+                    // Debug: Log alle Matches
+                    Object.keys(matches).forEach(userId => {
+                        const match = matches[userId];
+                        const userName = finalLocationParticipants.find(p => p.id === userId)?.name;
+                        console.log(`Match: ${userName} (${userId}) <-> ${match.partnerName} (${match.partnerId})`);
+                    });
+                    
+                    const newSessionState = {
+                        active: true,
+                        sessionId: sessionState.sessionId,
+                        roundNumber: sessionState.roundNumber + 1,
+                        roundStartTime: Date.now(),
+                        matches: matches,
+                        roundDuration: sessionState.roundDuration,
+                        manualControl: sessionState.manualControl
+                    };
+                    
+                    currentSessionStates[currentLocation] = newSessionState;
+                    localStorage.setItem('sessionStates', JSON.stringify(currentSessionStates));
+                    
+                    console.log('Next round created:', newSessionState.roundNumber);
+                }
+                
+                // Reset für alle Teilnehmer
+                currentRoundNumber = 0;
+                
+                // WICHTIG: sessionActive muss HIER auf false bleiben
+                // Der syncInterval wird es auf true setzen wenn die neue Runde bereit ist
+                sessionActive = false;
+                
+                console.log('Round transition complete, waiting for sync to trigger next round...');
+                
+            }, 1000);
+        }
+
+
+        // Session beenden
+        function endSession() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            sessionStates[currentLocation] = {
+                active: false,
+                roundNumber: 0,
+                roundStartTime: null,
+                matches: {}
+            };
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            sessionActive = false;
+            currentRoundNumber = 0;
+            stopChatSync();
+            showScreen('lobby-screen');
+            updateParticipantsList();
+        }
+
+        // Teilnehmerliste aktualisieren
+        async function updateParticipantsList() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/participants/${currentLocation}`);
+                const locationParticipants = await response.json();
+                
+                const list = document.getElementById('participants-list');
+                if (!list) return;
+                
+                list.innerHTML = '<h3>👥 Eingecheckte Teilnehmer (' + locationParticipants.length + ')</h3>';
+                
+                locationParticipants.forEach(p => {
+                    const isMe = currentUser && p.id === currentUser.id;
+                    list.innerHTML += `
+                        <div class="participant-item ${isMe ? 'me' : ''}">
+                            ${isMe ? '👤 ' : ''}${p.name}${isMe ? ' (Du)' : ''}
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error('Fehler beim Laden der Teilnehmer:', error);
+            }
+        }
+
+        // Wartende Teilnehmerliste aktualisieren
+        function updateWaitingParticipantsList() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            const listElement = document.getElementById('waiting-participants-list');
+            
+            listElement.innerHTML = locationParticipants
+                .map(p => `<div class="participant">${p.name}</div>`)
+                .join('');
+        }
+
+        // Logout
+        function logout(skipConfirm = false) {
+            if (!skipConfirm && !confirm('Möchtest du dich wirklich auschecken?')) {
+                return;
+            }
+            
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            participants[currentLocation] = locationParticipants.filter(p => p.id !== currentUser.id);
+            localStorage.setItem('participants', JSON.stringify(participants));
+            
+            clearInterval(syncInterval);
+            clearInterval(roundTimer);
+            clearInterval(visibilityCheckInterval);
+            stopChatSync();
+            
+            if (currentChatRoom) {
+                clearChat(currentChatRoom);
+            }
+            
+            window.removeEventListener('beforeunload', handlePageUnload);
+            
+            currentUser = null;
+            currentLocation = null;
+            sessionActive = false;
+            currentChatRoom = null;
+            currentRoundNumber = 0;
+            
+            showScreen('checkin-screen');
+            document.getElementById('name-input').value = '';
+            document.getElementById('location-select').selectedIndex = 0;
+        }
+
+        // Admin Panel Navigation
+        function showAdminPanel() {
+            console.log('showAdminPanel called, Auth:', checkAdminAuth());
+            if (checkAdminAuth()) {
+                showScreen('admin-screen');
+                loadAdminSettings();
+            } else {
+                showScreen('admin-login-screen');
+            }
+        }
+
+        function closeAdminPanel() {
+            window.location.href = window.location.pathname;
+        }
+
+        function adminLogout() {
+            sessionStorage.removeItem('adminAuth');
+            isAdminAuthenticated = false;
+            stopAdminStatusUpdates();
+            window.location.href = window.location.pathname;
+        }
+
+        function loadAdminSettings() {
+            loadAdminLocationsSelect();
+            
+            const locationsList = document.getElementById('locations-list');
+            locationsList.innerHTML = config.locations.map((loc, idx) => `
+                <div class="location-item">
+                    <span>${loc}</span>
+                    <button onclick="removeLocation(${idx})">🗑️</button>
+                </div>
+            `).join('');
+            
+            const questionsList = document.getElementById('questions-list');
+            questionsList.innerHTML = config.questions.map((q, idx) => `
+                <div class="question-item">
+                    <span>${q}</span>
+                    <button onclick="removeQuestion(${idx})">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        function addLocation() {
+            const input = document.getElementById('new-location-input');
+            const location = input.value.trim();
+            
+            if (!location) {
+                alert('Bitte gib einen Standort ein!');
+                return;
+            }
+            
+            if (config.locations.includes(location)) {
+                alert('Dieser Standort existiert bereits!');
+                return;
+            }
+            
+            config.locations.push(location);
+            input.value = '';
+            loadAdminSettings();
+        }
+
+        function removeLocation(index) {
+            if (confirm('Möchtest du diesen Standort wirklich löschen?')) {
+                config.locations.splice(index, 1);
+                loadAdminSettings();
+            }
+        }
+
+        function addQuestion() {
+            const input = document.getElementById('new-question-input');
+            const question = input.value.trim();
+            
+            if (!question) {
+                alert('Bitte gib eine Frage ein!');
+                return;
+            }
+            
+            config.questions.push(question);
+            input.value = '';
+            loadAdminSettings();
+        }
+
+        function removeQuestion(index) {
+            if (confirm('Möchtest du diese Frage wirklich löschen?')) {
+                config.questions.splice(index, 1);
+                loadAdminSettings();
+            }
+        }
+
+        // Standort-spezifische Einstellungen laden
+        function loadLocationSettings() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            const locationDetails = document.getElementById('location-details');
+            
+            if (!selectedLocation) {
+                if (locationDetails) {
+                    locationDetails.style.display = 'none';
+                }
+                stopAdminStatusUpdates();
+                return;
+            }
+            
+            // Details-Sektion anzeigen
+            if (locationDetails) {
+                locationDetails.style.display = 'block';
+            }
+            
+            // Sicherstellen, dass locationConfigs existiert
+            if (!config.locationConfigs) {
+                config.locationConfigs = {};
+            }
+            
+            // Config für Standort laden oder initialisieren
+            if (!config.locationConfigs[selectedLocation]) {
+                config.locationConfigs[selectedLocation] = {
+                    roundDuration: config.roundDuration,
+                    questions: [...config.questions]
+                };
+            }
+            
+            const locationConfig = config.locationConfigs[selectedLocation];
+            document.getElementById('admin-duration').value = locationConfig.roundDuration;
+            loadQuestionsList(locationConfig.questions);
+
+            // Teilnehmer-Link generieren
+            generateParticipantLink(selectedLocation);
+                        
+            // QR-Code anzeigen
+            displayQRCode(selectedLocation);
+            
+            // Session-Status aktualisieren
+            startAdminStatusUpdates();
+        }
+
+
+        // Fragen-Liste laden
+        function loadQuestionsList(questions) {
+            const questionsList = document.getElementById('questions-list');
+            questionsList.innerHTML = questions.map((q, idx) => `
+                <div class="question-item">
+                    <span>${q}</span>
+                    <button onclick="removeLocationQuestion(${idx})">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        // Standort-spezifische Frage entfernen
+        function removeLocationQuestion(index) {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                if (confirm('Möchtest du diese Frage wirklich aus der Gesamt-Bibliothek löschen?')) {
+                    config.questions.splice(index, 1);
+                    loadQuestionsList(config.questions);
+                }
+                return;
+            }
+            
+            if (confirm('Möchtest du diese Frage für diesen Standort entfernen?')) {
+                config.locationConfigs[selectedLocation].questions.splice(index, 1);
+                loadQuestionsList(config.locationConfigs[selectedLocation].questions);
+            }
+        }
+
+        // Frage hinzufügen (angepasst)
+        function addQuestionToLocation() {
+            const input = document.getElementById('new-question-input');
+            const question = input.value.trim();
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!question) {
+                alert('Bitte gib eine Frage ein!');
+                return;
+            }
+            
+            // Zur Gesamt-Bibliothek hinzufügen
+            if (!config.questions.includes(question)) {
+                config.questions.push(question);
+            }
+            
+            // Zur Standort-Config hinzufügen
+            if (selectedLocation) {
+                if (!config.locationConfigs[selectedLocation].questions.includes(question)) {
+                    config.locationConfigs[selectedLocation].questions.push(question);
+                }
+                loadQuestionsList(config.locationConfigs[selectedLocation].questions);
+            } else {
+                loadQuestionsList(config.questions);
+            }
+            
+            input.value = '';
+        }
+
+        // Teilnehmer-Link generieren
+        function generateParticipantLink(location) {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const participantUrl = `${baseUrl}?location=${encodeURIComponent(location)}`;
+            
+            console.log('Generating participant link for:', location);
+            console.log('URL:', participantUrl);
+            
+            const linkElement = document.getElementById('participant-link');
+            if (linkElement) {
+                linkElement.textContent = participantUrl;
+                console.log('Link set successfully');
+            } else {
+                console.error('participant-link element not found!');
+            }
+        }
+
+        // Link kopieren
+        function copyParticipantLink() {
+            const link = document.getElementById('participant-link').textContent;
+            navigator.clipboard.writeText(link).then(() => {
+                alert('Link kopiert! ✓');
+            });
+        }
+
+        // QR-Code anzeigen
+        function displayQRCode(location) {
+            const container = document.getElementById('qr-code-container');
+            container.innerHTML = ''; // Clear previous QR code
+            
+            const baseUrl = window.location.origin + window.location.pathname;
+            const participantUrl = `${baseUrl}?location=${encodeURIComponent(location)}`;
+            
+            new QRCode(container, {
+                text: participantUrl,
+                width: 200,
+                height: 200,
+                colorDark: "#009892",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+
+        // Fragen-Bibliothek anzeigen
+        function showQuestionLibrary() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            const libraryHTML = `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                    <h4 style="color: #667eea; margin-bottom: 10px;">📚 Fragen-Bibliothek</h4>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Wähle Fragen aus der Gesamt-Bibliothek:</p>
+                    ${config.questions.map((q, idx) => {
+                        const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                        return `
+                            <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 13px;">${q}</span>
+                                <button onclick="addQuestionFromLibrary(${idx})" 
+                                        style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                        ${isUsed ? 'disabled' : ''}>
+                                    ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            const existingLibrary = document.getElementById('question-library');
+            if (existingLibrary) {
+                existingLibrary.remove();
+            }
+            
+            const questionsList = document.getElementById('questions-list');
+            questionsList.insertAdjacentHTML('afterend', `<div id="question-library">${libraryHTML}</div>`);
+        }
+
+        function addQuestionFromLibrary(index) {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            const question = config.questions[index];
+            
+            if (!config.locationConfigs[selectedLocation].questions.includes(question)) {
+                config.locationConfigs[selectedLocation].questions.push(question);
+                loadQuestionsList(config.locationConfigs[selectedLocation].questions);
+                showQuestionLibrary(); // Refresh library
+            }
+        }
+
+        // Fragen-Bibliothek mit Suche und Pagination
+        let libraryCurrentPage = 1;
+        let librarySearchTerm = '';
+        const ITEMS_PER_PAGE = 10;
+
+        function showQuestionLibrary() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            libraryCurrentPage = 1;
+            librarySearchTerm = '';
+            renderQuestionLibrary();
+        }
+
+        function renderQuestionLibrary() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            // Filter questions based on search term
+            let filteredQuestions = config.questions.filter(q => 
+                q.toLowerCase().includes(librarySearchTerm.toLowerCase())
+            );
+            
+            const totalPages = Math.ceil(filteredQuestions.length / ITEMS_PER_PAGE);
+            const startIndex = (libraryCurrentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const questionsToShow = filteredQuestions.slice(startIndex, endIndex);
+            
+            const libraryHTML = `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                    <h4 style="color: #667eea; margin-bottom: 10px;">📚 Fragen-Bibliothek</h4>
+                    
+                    <div class="search-input">
+                        <input type="text" 
+                            id="library-search" 
+                            placeholder="Fragen durchsuchen..." 
+                            value="${librarySearchTerm}"
+                            oninput="handleLibrarySearch(event)">
+                    </div>
+                    
+                    <p class="search-result-count" style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                        ${filteredQuestions.length} Fragen gefunden
+                    </p>
+                    
+                    <div class="library-questions-list">
+                        ${questionsToShow.map((q) => {
+                            const actualIndex = config.questions.indexOf(q);
+                            const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                            return `
+                                <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                                    <span style="font-size: 13px; flex: 1;">${q}</span>
+                                    <button onclick="addQuestionFromLibrary(${actualIndex})" 
+                                            style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                            ${isUsed ? 'disabled' : ''}>
+                                        ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                                    </button>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    
+                    <div class="library-pagination pagination" style="${totalPages > 1 ? '' : 'display: none;'}">
+                        <button onclick="changeLibraryPage(-1)" ${libraryCurrentPage === 1 ? 'disabled' : ''}>
+                            ◀ Zurück
+                        </button>
+                        <span>Seite ${libraryCurrentPage} von ${totalPages}</span>
+                        <button onclick="changeLibraryPage(1)" ${libraryCurrentPage === totalPages ? 'disabled' : ''}>
+                            Weiter ▶
+                        </button>
+                    </div>
+                    
+                    <button onclick="closeQuestionLibrary()" style="background: #6c757d; margin-top: 10px; width: 100%;">
+                        Schließen
+                    </button>
+                </div>
+            `;
+            
+            const existingLibrary = document.getElementById('question-library');
+            if (existingLibrary) {
+                existingLibrary.innerHTML = libraryHTML;
+            } else {
+                const questionsList = document.getElementById('questions-list');
+                questionsList.insertAdjacentHTML('afterend', `<div id="question-library">${libraryHTML}</div>`);
+            }
+            
+            // Fokus zurück auf Suchfeld setzen
+            setTimeout(() => {
+                const searchInput = document.getElementById('library-search');
+                if (searchInput && document.activeElement !== searchInput) {
+                    searchInput.focus();
+                    // Cursor ans Ende setzen
+                    searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+                }
+            }, 0);
+        }
+
+        function handleLibrarySearch(event) {
+            librarySearchTerm = event.target.value;
+            libraryCurrentPage = 1;
+            
+            // Update nur den Inhalt, nicht das komplette HTML
+            updateQuestionLibraryContent();
+        }
+
+        function updateQuestionLibraryContent() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            // Filter questions based on search term
+            let filteredQuestions = config.questions.filter(q => 
+                q.toLowerCase().includes(librarySearchTerm.toLowerCase())
+            );
+            
+            const totalPages = Math.ceil(filteredQuestions.length / ITEMS_PER_PAGE);
+            const startIndex = (libraryCurrentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const questionsToShow = filteredQuestions.slice(startIndex, endIndex);
+            
+            // Nur den Fragen-Container und Pagination aktualisieren
+            const library = document.getElementById('question-library');
+            if (!library) return;
+            
+            // Update result count
+            const resultCount = library.querySelector('.search-result-count');
+            if (resultCount) {
+                resultCount.textContent = `${filteredQuestions.length} Fragen gefunden`;
+            }
+            
+            // Update questions list
+            const questionsList = library.querySelector('.library-questions-list');
+            if (questionsList) {
+                questionsList.innerHTML = questionsToShow.map((q) => {
+                    const actualIndex = config.questions.indexOf(q);
+                    const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                    return `
+                        <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                            <span style="font-size: 13px; flex: 1;">${q}</span>
+                            <button onclick="addQuestionFromLibrary(${actualIndex})" 
+                                    style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                    ${isUsed ? 'disabled' : ''}>
+                                ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // Update pagination
+            const pagination = library.querySelector('.library-pagination');
+            if (pagination) {
+                if (totalPages > 1) {
+                    pagination.innerHTML = `
+                        <button onclick="changeLibraryPage(-1)" ${libraryCurrentPage === 1 ? 'disabled' : ''}>
+                            ◀ Zurück
+                        </button>
+                        <span>Seite ${libraryCurrentPage} von ${totalPages}</span>
+                        <button onclick="changeLibraryPage(1)" ${libraryCurrentPage === totalPages ? 'disabled' : ''}>
+                            Weiter ▶
+                        </button>
+                    `;
+                    pagination.style.display = 'flex';
+                } else {
+                    pagination.style.display = 'none';
+                }
+            }
+        }
+
+        function changeLibraryPage(direction) {
+            libraryCurrentPage += direction;
+            updateQuestionLibraryContent();
+        }
+
+        function closeQuestionLibrary() {
+            const library = document.getElementById('question-library');
+            if (library) {
+                library.remove();
+            }
+        }
+
+        // Admin: Session manuell starten
+        async function adminStartSession() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            try {
+                // Teilnehmer vom Backend holen
+                const response = await fetch(`${BACKEND_URL}/api/participants/${selectedLocation}`);
+                const locationParticipants = await response.json();
+                
+                if (locationParticipants.length < 2) {
+                    alert('Mindestens 2 Teilnehmer erforderlich!');
+                    return;
+                }
+                
+                const locationConfig = config.locationConfigs && config.locationConfigs[selectedLocation] 
+                    ? config.locationConfigs[selectedLocation] 
+                    : config;
+                
+                const matches = createMatches(locationParticipants);
+                
+                const sessionData = {
+                    location: selectedLocation,
+                    active: true,
+                    roundNumber: 1,
+                    roundStartTime: Date.now(),
+                    matches: matches,
+                    roundDuration: locationConfig.roundDuration,
+                    manualControl: true
+                };
+                
+                // Session ans Backend senden
+                socket.emit('session-update', sessionData);
+                
+                alert('Session gestartet! ✓');
+                updateSessionStatus();
+            } catch (error) {
+                console.error('Fehler beim Starten der Session:', error);
+                alert('Fehler beim Starten der Session!');
+            }
+        }
+
+        // Admin: Session stoppen
+        function adminStopSession() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            if (!confirm('Möchtest du die aktuelle Session wirklich beenden?')) {
+                return;
+            }
+            
+            const sessionData = {
+                location: selectedLocation,
+                active: false,
+                roundNumber: 0,
+                roundStartTime: null,
+                matches: {},
+                manualControl: true
+            };
+            
+            // Session ans Backend senden
+            socket.emit('session-update', sessionData);
+            
+            alert('Session beendet! ✓');
+            updateSessionStatus();
+        }
+
+        // Session-Status im Admin Panel aktualisieren
+        async function updateSessionStatus() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                document.getElementById('session-status-text').textContent = 'Kein Standort gewählt';
+                document.getElementById('session-participants-count').textContent = '0';
+                document.getElementById('session-round-number').textContent = '-';
+                document.getElementById('start-session-btn').disabled = true;
+                document.getElementById('stop-session-btn').disabled = true;
+                return;
+            }
+            
+            try {
+                // Teilnehmer vom Backend holen
+                const participantsResponse = await fetch(`${BACKEND_URL}/api/participants/${selectedLocation}`);
+                const locationParticipants = await participantsResponse.json();
+                
+                // Session-State vom Backend holen
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${selectedLocation}`);
+                const sessionState = await sessionResponse.json();
+                
+                document.getElementById('session-participants-count').textContent = locationParticipants.length;
+                
+                const isManualControl = sessionState && sessionState.manualControl;
+                
+                if (sessionState && sessionState.active) {
+                    const modeText = isManualControl ? ' (Manuell)' : ' (Auto)';
+                    const durationText = sessionState.roundDuration ? ` - ${sessionState.roundDuration} Min` : '';
+                    document.getElementById('session-status-text').textContent = 'Session läuft' + modeText + durationText;
+                    document.getElementById('session-round-number').textContent = sessionState.roundNumber;
+                    document.getElementById('start-session-btn').disabled = true;
+                    document.getElementById('stop-session-btn').disabled = false;
+                } else {
+                    document.getElementById('session-status-text').textContent = 'Keine aktive Session';
+                    document.getElementById('session-round-number').textContent = '-';
+                    document.getElementById('start-session-btn').disabled = locationParticipants.length < 2;
+                    document.getElementById('stop-session-btn').disabled = true;
+                }
+            } catch (error) {
+                console.error('Fehler beim Laden des Session-Status:', error);
+            }
+        }
+        // Intervall für automatische Status-Aktualisierung im Admin Panel
+        let adminStatusInterval = null;
+        
+        function startAdminStatusUpdates() {
+            if (adminStatusInterval) {
+                clearInterval(adminStatusInterval);
+            }
+            updateSessionStatus();
+            adminStatusInterval = setInterval(updateSessionStatus, 2000);
+        }
+        
+        function stopAdminStatusUpdates() {
+            if (adminStatusInterval) {
+                clearInterval(adminStatusInterval);
+                adminStatusInterval = null;
+            }
+        }
+
+        // Automatischen Modus wieder aktivieren
+        function enableAutoMode() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            if (!confirm(`Automatischen Start-Modus für ${selectedLocation} aktivieren?\n\nDie Session wird automatisch starten wenn >= 2 Teilnehmer da sind.`)) {
+                return;
+            }
+            
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const currentState = sessionStates[selectedLocation] || {};
+            
+            sessionStates[selectedLocation] = {
+                ...currentState,
+                manualControl: false
+            };
+            
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            
+            alert('Automatischer Modus aktiviert! ✓\n\nDie Session startet automatisch bei >= 2 Teilnehmern.');
+            updateSessionStatus();
+        }
+
+        function saveAdminSettings() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle einen Standort aus!');
+                return;
+            }
+            
+            const newDuration = parseInt(document.getElementById('admin-duration').value);
+            
+            if (config.locationConfigs[selectedLocation]) {
+                config.locationConfigs[selectedLocation].roundDuration = newDuration;
+            }
+            
+            localStorage.setItem('appConfig', JSON.stringify(config));
+            
+            // Prüfe ob eine Session für diesen Standort läuft
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[selectedLocation];
+            
+            if (sessionState && sessionState.active) {
+                // Aktualisiere die Dauer auch für die laufende Session
+                sessionState.roundDuration = newDuration;
+                sessionStates[selectedLocation] = sessionState;
+                localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+                
+                alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\n⚠️ Hinweis: Die neue Dauer (' + newDuration + ' Min) gilt ab der AKTUELLEN Runde.\nDie Timer bei den Teilnehmern zeigen noch die alte Restzeit an, aber die nächste Runde verwendet die neue Dauer.');
+            } else {
+                alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\nDie neue Dauer (' + newDuration + ' Min) wird bei der nächsten Session verwendet.');
+            }
+            
+            updateSessionStatus();
+        }
+
+        // Bildschirm wechseln
+        function showScreen(screenId) {
+            console.log('showScreen called with:', screenId);
+            
+            // Stoppe Waiting-Timer wenn zu anderem Screen gewechselt wird (außer Lobby)
+            if (screenId !== 'waiting-screen' && screenId !== 'lobby-screen') {
+                stopWaitingTimer();
+            }
+            
+            const targetScreen = document.getElementById(screenId);
+            if (!targetScreen) {
+                console.error('Screen not found:', screenId);
+                return;
+            }
+            
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            
+            targetScreen.classList.add('active');
+            console.log('Active screen is now:', screenId);
+        }
+
+        // Benachrichtigungston
+        function playNotificationSound() {
+            const bell = document.getElementById('bell');
+            bell.style.display = 'block';
+            setTimeout(() => {
+                bell.style.display = 'none';
+            }, 1500);
+            
+            if ('AudioContext' in window || 'webkitAudioContext' in window) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioContext();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        // Initialisierung und Routing
+        window.addEventListener('load', () => {
+            initStorage();
+            handleRouting();
+        });
+
+        // Hash-Änderungen abfangen (für Navigation)
+        window.addEventListener('hashchange', () => {
+            handleRouting();
+        });
+
+        // Routing-Logik
+        function handleRouting() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const preselectedLocation = urlParams.get('location');
+            const hash = window.location.hash;
+
+            console.log('Routing Debug - Hash:', hash, 'Admin Param:', urlParams.get('admin'), 'Location:', preselectedLocation);
+
+            // Admin Route
+            if (hash === '#admin' || urlParams.get('admin') === 'true') {
+                console.log('Navigating to admin panel');
+                if (checkAdminAuth()) {
+                    showScreen('admin-screen');
+                    loadAdminSettings();
+                } else {
+                    showScreen('admin-login-screen');
+                }
+                return; // Wichtig: Stoppt weitere Ausführung
+            } 
+            // Teilnehmer-Modus mit vorausgewähltem Standort
+            else if (preselectedLocation && config.locations.includes(preselectedLocation)) {
+                console.log('Setting up participant mode for location:', preselectedLocation);
+                currentLocation = preselectedLocation;
+                const locationInfo = document.getElementById('location-info');
+                const locationName = document.getElementById('location-name');
+                if (locationInfo && locationName) {
+                    locationInfo.style.display = 'block';
+                    locationName.textContent = '📍 ' + preselectedLocation;
+                }
+                updateDurationDisplay();
+                showScreen('checkin-screen');
+            } 
+
+            // Kein Standort gewählt
+            else if (!preselectedLocation && hash !== '#admin') {
+                console.log('No location selected');
+                showScreen('checkin-screen');
+                setTimeout(() => {
+                    alert('Bitte verwende den Link, den du von deinem Organisator erhalten hast.');
+                }, 500);
+            }
+        }
+    </script>
+</body>
+</html>
