@@ -1137,6 +1137,12 @@
             const locationParticipants = participants[currentLocation] || [];
             if (locationParticipants.length < 2) return;
             
+            // Config neu laden um sicherzustellen, dass wir die aktuellste Dauer haben
+            const savedConfig = localStorage.getItem('appConfig');
+            if (savedConfig) {
+                config = JSON.parse(savedConfig);
+            }
+            
             // Lade standort-spezifische Dauer
             const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
                 ? config.locationConfigs[currentLocation] 
@@ -1242,6 +1248,11 @@
                 : (config.locationConfigs && config.locationConfigs[currentLocation] 
                     ? config.locationConfigs[currentLocation].roundDuration 
                     : config.roundDuration);
+            
+            console.log('Timer Start - Location:', currentLocation);
+            console.log('Session State roundDuration:', sessionState?.roundDuration);
+            console.log('Config roundDuration:', config.locationConfigs?.[currentLocation]?.roundDuration);
+            console.log('Using roundDuration:', roundDuration, 'minutes');
             
             const ROUND_DURATION = roundDuration * 60 * 1000;
             function updateTimer() {
@@ -1866,7 +1877,19 @@
                 return;
             }
             
-            if (!confirm(`Session für ${selectedLocation} jetzt starten?`)) {
+            // Config neu laden
+            const savedConfig = localStorage.getItem('appConfig');
+            if (savedConfig) {
+                config = JSON.parse(savedConfig);
+            }
+            
+            // Hole aktuelle Dauer
+            const locationConfig = config.locationConfigs && config.locationConfigs[selectedLocation] 
+                ? config.locationConfigs[selectedLocation] 
+                : config;
+            const currentDuration = locationConfig.roundDuration || config.roundDuration;
+            
+            if (!confirm(`Session für ${selectedLocation} jetzt starten?\n\nDauer pro Runde: ${currentDuration} Minuten`)) {
                 return;
             }
             
@@ -1878,7 +1901,8 @@
                 roundNumber: 1,
                 roundStartTime: Date.now(),
                 matches: matches,
-                manualControl: true  // Aktiviert manuellen Kontrollmodus
+                manualControl: true,  // Aktiviert manuellen Kontrollmodus
+                roundDuration: currentDuration  // Speichere die aktuelle Dauer
             };
             
             localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
@@ -1954,7 +1978,8 @@
             
             if (sessionState && sessionState.active) {
                 const modeText = isManualControl ? ' (Manuell)' : ' (Auto)';
-                document.getElementById('session-status-text').innerHTML = '<span style="color: #28a745; font-weight: bold;">🟢 Aktiv' + modeText + '</span>';
+                const durationText = sessionState.roundDuration ? ' - ' + sessionState.roundDuration + ' Min/Runde' : '';
+                document.getElementById('session-status-text').innerHTML = '<span style="color: #28a745; font-weight: bold;">🟢 Aktiv' + modeText + durationText + '</span>';
                 document.getElementById('session-round-number').textContent = sessionState.roundNumber || '-';
                 document.getElementById('start-session-btn').disabled = true;
                 document.getElementById('stop-session-btn').disabled = false;
@@ -2035,7 +2060,23 @@
             }
             
             localStorage.setItem('appConfig', JSON.stringify(config));
-            alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓');
+            
+            // Prüfe ob eine Session für diesen Standort läuft
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[selectedLocation];
+            
+            if (sessionState && sessionState.active) {
+                // Aktualisiere die Dauer auch für die laufende Session
+                sessionState.roundDuration = newDuration;
+                sessionStates[selectedLocation] = sessionState;
+                localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+                
+                alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\n⚠️ Hinweis: Die neue Dauer (' + newDuration + ' Min) gilt ab der AKTUELLEN Runde.\nDie Timer bei den Teilnehmern zeigen noch die alte Restzeit an, aber die nächste Runde verwendet die neue Dauer.');
+            } else {
+                alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\nDie neue Dauer (' + newDuration + ' Min) wird bei der nächsten Session verwendet.');
+            }
+            
+            updateSessionStatus();
         }
 
         // Bildschirm wechseln
