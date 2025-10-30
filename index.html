@@ -1766,27 +1766,46 @@
             }
         }
 
-        // Initialisierung
+        // Initialisierung und Routing
         window.addEventListener('load', () => {
             initStorage();
+            handleRouting();
         });
 
-        // URL-Parameter prüfen
-        const urlParams = new URLSearchParams(window.location.search);
-        const preselectedLocation = urlParams.get('location');
+        // Hash-Änderungen abfangen (für Navigation)
+        window.addEventListener('hashchange', () => {
+            handleRouting();
+        });
 
-        // Admin Route
-        if (window.location.hash === '#admin' || window.location.search.includes('admin=true')) {
-            showAdminPanel();
-        } else if (preselectedLocation && config.locations.includes(preselectedLocation)) {
+        // Routing-Logik
+        function handleRouting() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const preselectedLocation = urlParams.get('location');
+            const hash = window.location.hash;
+
+            // Admin Route
+            if (hash === '#admin' || urlParams.get('admin') === 'true') {
+                showAdminPanel();
+            } 
             // Teilnehmer-Modus mit vorausgewähltem Standort
-            currentLocation = preselectedLocation;
-            document.getElementById('location-info').style.display = 'block';
-            document.getElementById('location-name').textContent = '📍 ' + preselectedLocation;
-            updateDurationDisplay();
-        } else if (!preselectedLocation) {
-            // Kein Standort gewählt - zeige Hinweis
-            alert('Bitte verwende den Link, den du von deinem Organisator erhalten hast.');
+            else if (preselectedLocation && config.locations.includes(preselectedLocation)) {
+                currentLocation = preselectedLocation;
+                const locationInfo = document.getElementById('location-info');
+                const locationName = document.getElementById('location-name');
+                if (locationInfo && locationName) {
+                    locationInfo.style.display = 'block';
+                    locationName.textContent = '📍 ' + preselectedLocation;
+                }
+                updateDurationDisplay();
+                showScreen('checkin-screen');
+            } 
+            // Kein Standort gewählt
+            else if (!preselectedLocation && hash !== '#admin') {
+                showScreen('checkin-screen');
+                setTimeout(() => {
+                    alert('Bitte verwende den Link, den du von deinem Organisator erhalten hast.');
+                }, 500);
+            }
         }
     </script>
 </body>
