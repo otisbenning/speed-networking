@@ -1226,24 +1226,33 @@
 
         // Paarungen erstellen
         function createMatches(participants) {
+            console.log('createMatches called with participants:', participants.map(p => p.name));
+            
             const shuffled = [...participants].sort(() => Math.random() - 0.5);
             const matches = {};
             
+            console.log('Shuffled order:', shuffled.map(p => p.name));
+            
             for (let i = 0; i < shuffled.length; i += 2) {
                 if (i + 1 < shuffled.length) {
-                    const chatRoomId = [shuffled[i].id, shuffled[i + 1].id].sort().join('_');
+                    const user1 = shuffled[i];
+                    const user2 = shuffled[i + 1];
+                    const chatRoomId = [user1.id, user2.id].sort().join('_');
                     
-                    matches[shuffled[i].id] = {
-                        partnerId: shuffled[i + 1].id,
-                        partnerName: shuffled[i + 1].name,
+                    console.log(`Pairing: ${user1.name} <-> ${user2.name}`);
+                    
+                    matches[user1.id] = {
+                        partnerId: user2.id,
+                        partnerName: user2.name,
                         chatRoom: chatRoomId
                     };
-                    matches[shuffled[i + 1].id] = {
-                        partnerId: shuffled[i].id,
-                        partnerName: shuffled[i].name,
+                    matches[user2.id] = {
+                        partnerId: user1.id,
+                        partnerName: user1.name,
                         chatRoom: chatRoomId
                     };
                 } else {
+                    console.log(`${shuffled[i].name} hat keinen Partner (ungerade Anzahl)`);
                     matches[shuffled[i].id] = {
                         partnerId: null,
                         partnerName: null,
@@ -1289,7 +1298,21 @@
             setTimeout(() => {
                 const match = sessionState.matches[currentUser.id];
                 
+                console.log('My match:', match);
+                
+                // Validiere dass das Match symmetrisch ist
                 if (match && match.partnerId) {
+                    const partnerMatch = sessionState.matches[match.partnerId];
+                    console.log('Partner match:', partnerMatch);
+                    
+                    if (partnerMatch && partnerMatch.partnerId !== currentUser.id) {
+                        console.error('ASYMMETRIC MATCH DETECTED!', 
+                                      'My partner:', match.partnerName, 
+                                      'Their partner:', partnerMatch.partnerName);
+                        alert('Fehler bei der Paarung erkannt! Bitte Admin informieren.');
+                        return;
+                    }
+                    
                     currentChatRoom = match.chatRoom;
                     
                     document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
@@ -1376,50 +1399,85 @@
 
         // Nächste Runde prüfen
         function checkForNextRound() {
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const sessionState = sessionStates[currentLocation];
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
+            console.log('checkForNextRound called for user:', currentUser.name);
             
-            if (locationParticipants.length < 2) {
-                endSession();
-                return;
-            }
-            
-            const isCoordinator = currentUser.id === locationParticipants[0].id;
-            
-            if (isCoordinator) {
-                // WICHTIG: Hole die AKTUELLSTE Teilnehmerliste - inkl. neu dazugekommener!
-                const freshParticipants = JSON.parse(localStorage.getItem('participants'));
-                const freshLocationParticipants = freshParticipants[currentLocation] || [];
-                
-                console.log('Creating matches for next round with', freshLocationParticipants.length, 'participants');
-                
-                const matches = createMatches(freshLocationParticipants);
-                const newSessionState = {
-                    active: true,
-                    sessionId: sessionState.sessionId,  // Behalte Session-ID bei
-                    roundNumber: sessionState.roundNumber + 1,
-                    roundStartTime: Date.now(),
-                    matches: matches,
-                    roundDuration: sessionState.roundDuration,  // Behalte die Dauer bei
-                    manualControl: sessionState.manualControl  // Behalte den Kontrollmodus bei
-                };
-                sessionStates[currentLocation] = newSessionState;
-                localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
-                
-                console.log('Next round created:', newSessionState.roundNumber, 'with', freshLocationParticipants.length, 'participants');
-            }
-            
-            // Reset für alle Teilnehmer
-            currentRoundNumber = 0;
-            sessionActive = false;
-            
+            // Warte kurz damit alle Clients den Timer beenden
             setTimeout(() => {
-                sessionActive = true;  // Setze wieder auf true für die neue Runde
-                startRound();
+                const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                const sessionState = sessionStates[currentLocation];
+                
+                // Hole FRISCHE Teilnehmerliste
+                const participants = JSON.parse(localStorage.getItem('participants'));
+                const locationParticipants = participants[currentLocation] || [];
+                
+                console.log('Participants for next round:', locationParticipants.map(p => p.name));
+                
+                if (locationParticipants.length < 2) {
+                    endSession();
+                    return;
+                }
+                
+                // Prüfe ob ich der Coordinator bin
+                const isCoordinator = locationParticipants.length > 0 && 
+                                      locationParticipants[0].id === currentUser.id;
+                
+                console.log('Is coordinator?', isCoordinator, 'User:', currentUser.name);
+                
+                if (isCoordinator) {
+                    // Prüfe ob schon jemand die nächste Runde erstellt hat
+                    const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                    const currentSessionState = currentSessionStates[currentLocation];
+                    
+                    if (currentSessionState.roundNumber > sessionState.roundNumber) {
+                        console.log('Next round already created by another client');
+                        return;
+                    }
+                    
+                    // NOCHMAL frische Teilnehmerliste holen (sicher ist sicher!)
+                    const finalParticipants = JSON.parse(localStorage.getItem('participants'));
+                    const finalLocationParticipants = finalParticipants[currentLocation] || [];
+                    
+                    console.log('Coordinator creating matches for', finalLocationParticipants.length, 'participants:', 
+                                finalLocationParticipants.map(p => p.name));
+                    
+                    const matches = createMatches(finalLocationParticipants);
+                    
+                    // Debug: Log alle Matches
+                    Object.keys(matches).forEach(userId => {
+                        const match = matches[userId];
+                        const userName = finalLocationParticipants.find(p => p.id === userId)?.name;
+                        console.log(`Match: ${userName} (${userId}) <-> ${match.partnerName} (${match.partnerId})`);
+                    });
+                    
+                    const newSessionState = {
+                        active: true,
+                        sessionId: sessionState.sessionId,
+                        roundNumber: sessionState.roundNumber + 1,
+                        roundStartTime: Date.now(),
+                        matches: matches,
+                        roundDuration: sessionState.roundDuration,
+                        manualControl: sessionState.manualControl
+                    };
+                    
+                    currentSessionStates[currentLocation] = newSessionState;
+                    localStorage.setItem('sessionStates', JSON.stringify(currentSessionStates));
+                    
+                    console.log('Next round created:', newSessionState.roundNumber);
+                }
+                
+                // Reset für alle Teilnehmer
+                currentRoundNumber = 0;
+                sessionActive = false;
+                
+                // Warte nochmal kurz damit Coordinator Zeit hat zu schreiben
+                setTimeout(() => {
+                    sessionActive = true;
+                    startRound();
+                }, 500);
+                
             }, 1000);
         }
+
 
         // Session beenden
         function endSession() {
