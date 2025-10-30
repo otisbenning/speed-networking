@@ -815,6 +815,7 @@
         let currentChatRoom = null;
         let visibilityCheckInterval = null;
         let lastVisibilityState = document.visibilityState;
+        let currentPartner = null;
 
         // Admin Login
         function adminLogin() {
@@ -1393,7 +1394,11 @@
                     }
                     
                     currentChatRoom = match.chatRoom;
-                    
+                    currentPartner = {
+                        id: match.partnerId,
+                        name: match.partnerName
+                    };
+
                     document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
                     document.getElementById('partner-name').textContent = match.partnerName;
                     const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
