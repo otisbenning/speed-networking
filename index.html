@@ -1538,7 +1538,16 @@
             const baseUrl = window.location.origin + window.location.pathname;
             const participantUrl = `${baseUrl}?location=${encodeURIComponent(location)}`;
             
-            document.getElementById('participant-link').textContent = participantUrl;
+            console.log('Generating participant link for:', location);
+            console.log('URL:', participantUrl);
+            
+            const linkElement = document.getElementById('participant-link');
+            if (linkElement) {
+                linkElement.textContent = participantUrl;
+                console.log('Link set successfully');
+            } else {
+                console.error('participant-link element not found!');
+            }
         }
 
         // Link kopieren
