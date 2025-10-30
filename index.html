@@ -990,14 +990,28 @@
             alert('Partner wurde als inaktiv gemeldet. Er wird aufgefordert, seine Anwesenheit zu bestätigen.');
         }
 
+
         // Aktivitäts-Check bei gemeldeten Usern
         function checkIfReported() {
             const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
             
             if (inactiveReports[currentUser.id] && inactiveReports[currentUser.id].length > 0) {
-                // Wurde gemeldet - Bestätigung anfordern
-                showScreen('activity-check-screen');
-                playNotificationSound();
+                const reportTime = inactiveReports[currentUser.id][0].timestamp;
+                const now = Date.now();
+                const timeSinceReport = now - reportTime;
+                
+                // Nur anzeigen wenn Meldung aktuell ist (< 5 Minuten)
+                if (timeSinceReport < 300000) {
+                    // Wurde gemeldet - Bestätigung anfordern
+                    if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                        showScreen('activity-check-screen');
+                        playNotificationSound();
+                    }
+                } else {
+                    // Alte Meldung - automatisch löschen
+                    delete inactiveReports[currentUser.id];
+                    localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+                }
             }
         }
 
@@ -1051,7 +1065,10 @@
         function startSync() {
             syncInterval = setInterval(() => {
                 
-                checkIfReported(); // Prüfe ob User gemeldet wurde
+                // Wenn activity-check-screen aktiv ist, nicht überschreiben
+                if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                    checkIfReported(); // Prüfe ob User gemeldet wurde
+                }
                 removeReportedInactiveUsers(); // Entferne nicht bestätigte User
                 
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
@@ -1059,11 +1076,14 @@
                 
                 // Prüfe ob ich in den aktuellen Matches bin
                 const amIInMatches = sessionState && 
-                                     sessionState.matches && 
-                                     sessionState.matches[currentUser.id] !== undefined;
-                
-                // Nur starten wenn: Session aktiv UND wir noch nicht aktiv sind UND wir in den Matches sind
-                if (sessionState && sessionState.active && !sessionActive && amIInMatches) {
+                                    sessionState.matches && 
+                                    sessionState.matches[currentUser.id] !== undefined;
+
+                // Wenn activity-check aktiv ist, nicht in neue Runde starten
+                const isInActivityCheck = document.getElementById('activity-check-screen').classList.contains('active');
+
+                // Nur starten wenn: Session aktiv UND wir noch nicht aktiv sind UND wir in den Matches sind UND nicht im Activity Check
+                if (sessionState && sessionState.active && !sessionActive && amIInMatches && !isInActivityCheck) {
                     console.log('Session active and I am in matches, starting round...');
                     sessionActive = true;
                     startRound();
