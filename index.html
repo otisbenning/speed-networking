@@ -190,6 +190,21 @@
             animation: ring 0.5s ease-in-out 3;
         }
 
+        #confirmation-bell {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .confirmation-pending {
+            background: #ffc107;
+            color: #000;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            display: inline-block;
+            margin: 10px 0;
+        }
+
         @keyframes ring {
             0%, 100% { transform: rotate(0deg); }
             25% { transform: rotate(-15deg); }
@@ -644,6 +659,27 @@
             <button class="logout-btn" onclick="logout()">Auschecken</button>
         </div>
 
+        <!-- Participation Confirmation Screen -->
+        <div id="confirmation-screen" class="screen">
+            <div class="bell-animation" id="confirmation-bell">🔔</div>
+            <h1>Nächste Runde?</h1>
+            <p class="subtitle">Möchtest du an der nächsten Runde teilnehmen?</p>
+            
+            <div class="timer" id="confirmation-timer">10</div>
+            
+            <button onclick="confirmParticipation()" style="background: #28a745; margin-bottom: 10px;">
+                ✓ Ja, ich bin dabei!
+            </button>
+            
+            <button onclick="skipNextRound()" style="background: #ffc107;">
+                Pause - diesmal aussetzen
+            </button>
+            
+            <p style="color: #666; font-size: 0.9em; margin-top: 20px;">
+                Keine Bestätigung? Du sitzt die nächste Runde aus und wirst danach wieder gefragt.
+            </p>
+        </div>
+
         <!-- Waiting Screen -->
         <div id="waiting-screen" class="screen">
             <h1>⏸️ Pause</h1>
@@ -797,6 +833,9 @@
         let currentChatRoom = null;
         let visibilityCheckInterval = null;
         let lastVisibilityState = document.visibilityState;
+        let participationConfirmed = false;
+        let confirmationTimer = null;
+        let confirmationTimeout = null;
 
         // Admin Login
         function adminLogin() {
@@ -927,25 +966,10 @@
             startVisibilityCheck();
         }
 
-        // Visibility Check - erkennt Tab-Schließen, aber nicht Hintergrund/Sperren
+        // Visibility Check - erkennt nur echtes Tab-Schließen
         function startVisibilityCheck() {
-            // Heartbeat alle 2 Sekunden
-            visibilityCheckInterval = setInterval(() => {
-                if (currentUser && currentLocation) {
-                    updateHeartbeat();
-                }
-            }, 2000);
-
             // Cleanup bei Page Unload (echter Tab-Schluss)
             window.addEventListener('beforeunload', handlePageUnload);
-            
-            // Visibility Change für Debugging
-            document.addEventListener('visibilitychange', () => {
-                lastVisibilityState = document.visibilityState;
-                if (document.visibilityState === 'visible' && currentUser) {
-                    updateHeartbeat();
-                }
-            });
         }
 
         // Heartbeat aktualisieren
@@ -968,31 +992,20 @@
             }
         }
 
-        // Cleanup inaktiver Nutzer (ohne Heartbeat für >10 Sekunden)
+        // Cleanup: Entfernt nur User, die den Tab geschlossen haben (keine lastActivity mehr)
         function cleanupInactiveUsers() {
             const participants = JSON.parse(localStorage.getItem('participants'));
-            const now = Date.now();
-            const TIMEOUT = 10000; // 10 Sekunden
-
+            
             Object.keys(participants).forEach(location => {
                 const before = participants[location].length;
-                participants[location] = participants[location].filter(p => 
-                    now - p.lastActivity < TIMEOUT
-                );
+                // Keine automatische Entfernung mehr - User bleiben bis Tab geschlossen wird
                 const after = participants[location].length;
-                
-                if (before !== after) {
-                    console.log(`Cleanup: ${before - after} inaktive Nutzer entfernt in ${location}`);
-                }
             });
-
-            localStorage.setItem('participants', JSON.stringify(participants));
         }
 
         // Synchronisation starten
         function startSync() {
             syncInterval = setInterval(() => {
-                cleanupInactiveUsers();
                 
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                 const sessionState = sessionStates[currentLocation];
@@ -1243,7 +1256,19 @@
         function createMatches(participants) {
             console.log('createMatches called with participants:', participants.map(p => p.name));
             
-            const shuffled = [...participants].sort(() => Math.random() - 0.5);
+            // Nur aktive Teilnehmer (die bestätigt haben oder nicht pausiert sind)
+            const activeParticipants = participants.filter(p => !p.pausedUntilNextRound);
+            
+            console.log('Active participants:', activeParticipants.map(p => p.name));
+            
+            // Pause-Flag für nächste Runde zurücksetzen
+            participants.forEach(p => {
+                if (p.pausedUntilNextRound) {
+                    delete p.pausedUntilNextRound;
+                }
+            });
+            
+            const shuffled = [...activeParticipants].sort(() => Math.random() - 0.5);
             const matches = {};
             
             console.log('Shuffled order:', shuffled.map(p => p.name));
@@ -1425,11 +1450,95 @@
             roundTimer = setInterval(updateTimer, 100);
         }
 
+        // Teilnahme-Bestätigung anzeigen
+        function showParticipationConfirmation() {
+            participationConfirmed = false;
+            showScreen('confirmation-screen');
+            playNotificationSound();
+            
+            let countdown = 10;
+            const timerElement = document.getElementById('confirmation-timer');
+            timerElement.textContent = countdown;
+            
+            confirmationTimer = setInterval(() => {
+                countdown--;
+                timerElement.textContent = countdown;
+                
+                if (countdown <= 0) {
+                    clearInterval(confirmationTimer);
+                    // Timeout: User sitzt diese Runde aus
+                    skipNextRound();
+                }
+            }, 1000);
+            
+            // Backup Timeout
+            confirmationTimeout = setTimeout(() => {
+                if (!participationConfirmed) {
+                    skipNextRound();
+                }
+            }, 10000);
+        }
+
+        // User bestätigt Teilnahme
+        function confirmParticipation() {
+            participationConfirmed = true;
+            clearInterval(confirmationTimer);
+            clearTimeout(confirmationTimeout);
+            
+            // User bleibt in der Teilnehmerliste
+            console.log(currentUser.name + ' confirmed participation');
+            
+            // Warte auf nächste Runde
+            showScreen('waiting-screen');
+            updateWaitingParticipantsList();
+        }
+
+        // User setzt diese Runde aus
+        function skipNextRound() {
+            participationConfirmed = false;
+            clearInterval(confirmationTimer);
+            clearTimeout(confirmationTimeout);
+            
+            console.log(currentUser.name + ' skipping next round');
+            
+            // User temporär als "paused" markieren
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            const userIndex = locationParticipants.findIndex(p => p.id === currentUser.id);
+            
+            if (userIndex !== -1) {
+                locationParticipants[userIndex].pausedUntilNextRound = true;
+                participants[currentLocation] = locationParticipants;
+                localStorage.setItem('participants', JSON.stringify(participants));
+            }
+            
+            // Warte-Screen anzeigen
+            showScreen('waiting-screen');
+            updateWaitingParticipantsList();
+            
+            // Info anzeigen
+            const waitingList = document.getElementById('waiting-participants-list');
+            waitingList.innerHTML = `
+                <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <strong>⏸️ Du sitzt diese Runde aus</strong><br>
+                    <span style="font-size: 0.9em; color: #856404;">
+                        Du wirst vor der übernächsten Runde wieder gefragt.
+                    </span>
+                </div>
+                ${waitingList.innerHTML}
+            `;
+        }
+
         // Nächste Runde prüfen
         function checkForNextRound() {
             console.log('checkForNextRound called for user:', currentUser.name);
             
-            // Warte kurz damit alle Clients den Timer beenden
+            // Bestätigungs-Screen anzeigen
+            setTimeout(() => {
+                showParticipationConfirmation();
+            }, 1000);
+            
+            // Warte auf Bestätigungen und starte dann Matching
             setTimeout(() => {
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                 const sessionState = sessionStates[currentLocation];
