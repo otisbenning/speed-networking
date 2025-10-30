@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Speed Networking - Café Meet</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -30,27 +31,6 @@
             padding: 40px;
             text-align: center;
             position: relative;
-        }
-
-        .admin-btn {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: transparent;
-            color: #009892;
-            border: 2px solid #009892;
-            padding: 6px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 11px;
-            transition: all 0.3s;
-            opacity: 0.6;
-        }
-
-        .admin-btn:hover {
-            background: #009892;
-            color: white;
-            opacity: 1;
         }
 
         h1 {
@@ -406,14 +386,186 @@
             outline: none;
             border-color: #667eea;
         }
+
+        /* Admin Login */
+        .admin-login {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .admin-login h2 {
+            color: #009892;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .admin-login input[type="password"] {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+
+        .admin-login button {
+            width: 100%;
+            background: #009892;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .admin-login button:hover {
+            background: #007d77;
+        }
+
+        .error-message {
+            color: #c30059;
+            background: #ffe0eb;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+            display: none;
+        }
+
+        /* QR Code Container */
+        .qr-code-display {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .qr-code-display canvas {
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .pagination button {
+            width: auto;
+            padding: 8px 15px;
+            font-size: 14px;
+            background: #009892;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .pagination span {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Search Input */
+        .search-input {
+            margin-bottom: 15px;
+        }
+
+        .search-input input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        /* Location Card */
+        .location-card {
+            background: white;
+            border: 2px solid #009892;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+
+        .location-card h4 {
+            color: #009892;
+            margin-bottom: 15px;
+        }
+
+        .location-card .link-box {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            padding: 8px 15px;
+            font-size: 13px;
+            width: auto;
+            margin-top: 10px;
+        }
+
+        /* Mobile Optimierung */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                max-width: 100%;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 1.5em;
+            }
+            
+            .partner-name {
+                font-size: 1.5em;
+            }
+            
+            .timer {
+                font-size: 2.5em;
+            }
+            
+            .admin-login {
+                margin: 20px;
+                padding: 25px;
+            }
+            
+            .question-item,
+            .location-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .question-item button,
+            .location-item button {
+                width: 100%;
+            }
+        }
+
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Check-in Screen -->
         <div id="checkin-screen" class="screen active">
-            <button class="admin-btn" onclick="showAdminPanel()">⚙️ Admin</button>
-            
             <h1>🎯 Speed Networking</h1>
             <p class="subtitle">Willkommen im Café Meet!</p>
             
@@ -426,9 +578,9 @@
                 • Nach <span id="duration-display">10</span> Minuten zur nächsten Person!
             </div>
 
-            <select id="location-select">
-                <option value="">Standort wählen...</option>
-            </select>
+            <div id="location-info" style="display: none; background: #009892; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-weight: bold;">
+                <span id="location-name"></span>
+            </div>
 
             <input type="text" id="name-input" placeholder="Dein Name" maxlength="30">
             <button id="checkin-btn" onclick="checkIn()">Einchecken 📱</button>
@@ -506,14 +658,36 @@
             <button class="logout-btn" onclick="logout()">Auschecken</button>
         </div>
 
+        <!-- Admin Login -->
+        <div id="admin-login-screen" class="screen">
+            <div class="admin-login">
+                <h2>🔐 Admin Login</h2>
+                <div class="error-message" id="login-error">Falsches Passwort!</div>
+                <input type="password" id="admin-password" placeholder="Admin-Passwort eingeben">
+                <button onclick="adminLogin()">Anmelden</button>
+            </div>
+        </div>
+
         <!-- Admin Panel -->
         <div id="admin-screen" class="screen">
             <h1>⚙️ Admin Panel</h1>
-            <p class="subtitle">Einstellungen verwalten</p>
+            <p class="subtitle">Zentrale Verwaltung</p>
 
+        <!-- Standort-Auswahl -->
+        <div class="admin-section">
+            <h3>📍 Standort auswählen</h3>
+            <div class="form-group">
+                <select id="admin-location-select" onchange="loadLocationSettings()">
+                    <option value="">-- Standort wählen --</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Standort-Details -->
+        <div id="location-details" style="display: none;">
             <!-- Session Duration -->
             <div class="admin-section">
-                <h3>⏱️ Session-Dauer</h3>
+                <h3>⏱️ Session-Dauer für diesen Standort</h3>
                 <div class="form-group">
                     <label>Dauer pro Runde (Minuten)</label>
                     <select id="admin-duration">
@@ -526,17 +700,19 @@
                 </div>
             </div>
 
-            <!-- Locations -->
+            <!-- QR Code & Link -->
             <div class="admin-section">
-                <h3>📍 Standorte</h3>
-                <div class="locations-list" id="locations-list"></div>
-                <input type="text" id="new-location-input" placeholder="Neuer Standort...">
-                <button onclick="addLocation()">Standort hinzufügen</button>
+                <h3>🔗 Teilnehmer-Link & QR-Code</h3>
+                <div class="location-card" id="location-link-card">
+                    <div class="link-box" id="participant-link"></div>
+                    <button class="copy-btn" onclick="copyParticipantLink()">📋 Link kopieren</button>
+                    <div class="qr-code-display" id="qr-code-container"></div>
+                </div>
             </div>
 
             <!-- Questions -->
             <div class="admin-section">
-                <h3>💭 Gesprächsfragen</h3>
+                <h3>💭 Gesprächsfragen für diesen Standort</h3>
                 <div class="questions-list" id="questions-list"></div>
                 <textarea id="new-question-input" placeholder="Neue Frage eingeben..."></textarea>
                 <button onclick="addQuestionToLocation()">Frage hinzufügen</button>
@@ -544,12 +720,26 @@
             </div>
 
             <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
-            <button class="back-btn" onclick="closeAdminPanel()">← Zurück</button>
+            </div>
+
+            <!-- Standorte Verwalten -->
+            <div class="admin-section" style="border-top: 2px solid #e0e0e0; padding-top: 30px; margin-top: 30px;">
+                <h3>📍 Standorte verwalten</h3>
+                <div class="locations-list" id="locations-list"></div>
+                <input type="text" id="new-location-input" placeholder="Neuer Standort...">
+                <button onclick="addLocation()">Standort hinzufügen</button>
+            </div>
+
+            <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
+            <button class="back-btn" onclick="adminLogout()">🚪 Logout</button>
         </div>
     </div>
 
     <script>
         // Konfiguration
+        const ADMIN_PASSWORD_HASH = 'swaf2024'; // TODO: In Produktion durch echten Hash ersetzen
+        let isAdminAuthenticated = false;
+
         let config = {
             roundDuration: 10, // in Minuten
             locations: ['Café Central', 'Büro Berlin', 'CoWorking Köln'],
@@ -576,6 +766,30 @@
         let currentChatRoom = null;
         let visibilityCheckInterval = null;
         let lastVisibilityState = document.visibilityState;
+
+        // Admin Login
+        function adminLogin() {
+            const password = document.getElementById('admin-password').value;
+            const errorMsg = document.getElementById('login-error');
+            
+            // TODO: In Produktion durch sichere Hash-Vergleich ersetzen
+            if (password === ADMIN_PASSWORD_HASH) {
+                isAdminAuthenticated = true;
+                sessionStorage.setItem('adminAuth', 'true');
+                showScreen('admin-screen');
+                loadAdminSettings();
+            } else {
+                errorMsg.style.display = 'block';
+                setTimeout(() => {
+                    errorMsg.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Admin Auth Check
+        function checkAdminAuth() {
+            return sessionStorage.getItem('adminAuth') === 'true';
+        }
 
         // Initialisierung
         function initStorage() {
@@ -618,21 +832,21 @@
         // Duration Display aktualisieren
         function updateDurationDisplay() {
             const display = document.getElementById('duration-display');
-            const locationSelect = document.getElementById('location-select');
-            if (display && locationSelect) {
-                const selectedLocation = locationSelect.value;
-                if (selectedLocation && config.locationConfigs && config.locationConfigs[selectedLocation]) {
-                    display.textContent = config.locationConfigs[selectedLocation].roundDuration;
+            if (display && currentLocation) {
+                if (config.locationConfigs && config.locationConfigs[currentLocation]) {
+                    display.textContent = config.locationConfigs[currentLocation].roundDuration;
                 } else {
                     display.textContent = config.roundDuration;
                 }
             }
         }
 
-        // Locations Select laden
-        function loadLocationsSelect() {
-            const select = document.getElementById('location-select');
-            select.innerHTML = '<option value="">Standort wählen...</option>';
+        // Admin Locations Select laden
+        function loadAdminLocationsSelect() {
+            const select = document.getElementById('admin-location-select');
+            if (!select) return;
+            
+            select.innerHTML = '<option value="">-- Standort wählen --</option>';
             config.locations.forEach(loc => {
                 const option = document.createElement('option');
                 option.value = loc;
@@ -641,21 +855,14 @@
             });
         }
 
-        // Event Listener für Standort-Änderung
-        document.addEventListener('DOMContentLoaded', () => {
-            const locationSelect = document.getElementById('location-select');
-            if (locationSelect) {
-                locationSelect.addEventListener('change', updateDurationDisplay);
-            }
-        });
 
         // Check-in
         function checkIn() {
             const name = document.getElementById('name-input').value.trim();
-            const location = document.getElementById('location-select').value;
+            const location = currentLocation; // Bereits durch URL gesetzt
             
             if (!location) {
-                alert('Bitte wähle einen Standort aus!');
+                alert('Fehler: Kein Standort festgelegt!');
                 return;
             }
 
@@ -1137,32 +1344,28 @@
             document.getElementById('location-select').selectedIndex = 0;
         }
 
-        // Admin Panel
+        // Admin Panel Navigation
         function showAdminPanel() {
-            loadAdminSettings();
-            showScreen('admin-screen');
+            if (checkAdminAuth()) {
+                loadAdminSettings();
+                showScreen('admin-screen');
+            } else {
+                showScreen('admin-login-screen');
+            }
         }
 
         function closeAdminPanel() {
-            showScreen('checkin-screen');
+            window.location.href = window.location.pathname;
+        }
+
+        function adminLogout() {
+            sessionStorage.removeItem('adminAuth');
+            isAdminAuthenticated = false;
+            window.location.href = window.location.pathname;
         }
 
         function loadAdminSettings() {
-            // Location-Auswahl für Admin hinzufügen
-            const adminLocationSelect = document.getElementById('admin-location-select');
-            if (!adminLocationSelect) {
-                const adminSection = document.querySelector('.admin-section');
-                const selectHTML = `
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label>Standort für Einstellungen wählen</label>
-                        <select id="admin-location-select" onchange="loadLocationSettings()">
-                            <option value="">-- Standort wählen --</option>
-                            ${config.locations.map(loc => `<option value="${loc}">${loc}</option>`).join('')}
-                        </select>
-                    </div>
-                `;
-                adminSection.insertAdjacentHTML('afterbegin', selectHTML);
-            }
+            loadAdminLocationsSelect();
             
             const locationsList = document.getElementById('locations-list');
             locationsList.innerHTML = config.locations.map((loc, idx) => `
@@ -1237,6 +1440,9 @@
                 return;
             }
             
+            // Details-Sektion anzeigen
+            document.getElementById('location-details').style.display = 'block';
+
             // Sicherstellen, dass locationConfigs existiert
             if (!config.locationConfigs) {
                 config.locationConfigs = {};
@@ -1257,6 +1463,9 @@
             // QR-Code anzeigen
             displayQRCode(selectedLocation);
         }
+
+        // Teilnehmer-Link generieren
+        generateParticipantLink(selectedLocation);
 
         // Fragen-Liste laden
         function loadQuestionsList(questions) {
@@ -1315,29 +1524,38 @@
             input.value = '';
         }
 
+        // Teilnehmer-Link generieren
+        function generateParticipantLink(location) {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const participantUrl = `${baseUrl}?location=${encodeURIComponent(location)}`;
+            
+            document.getElementById('participant-link').textContent = participantUrl;
+        }
+
+        // Link kopieren
+        function copyParticipantLink() {
+            const link = document.getElementById('participant-link').textContent;
+            navigator.clipboard.writeText(link).then(() => {
+                alert('Link kopiert! ✓');
+            });
+        }
+
         // QR-Code anzeigen
         function displayQRCode(location) {
-            const qrSection = document.getElementById('qr-code-section');
-            if (!qrSection) {
-                const adminScreen = document.getElementById('admin-screen');
-                const qrHTML = `
-                    <div class="admin-section" id="qr-code-section">
-                        <h3>🔗 QR-Code für ${location}</h3>
-                        <div id="qr-code-container" style="background: white; padding: 20px; border-radius: 10px; text-align: center;">
-                            <p style="color: #666; margin-bottom: 10px;">Nutzer können diesen QR-Code scannen, um direkt zu diesem Standort zu gelangen:</p>
-                            <div style="font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 5px; word-break: break-all; margin: 10px 0;">
-                                ${window.location.href}?location=${encodeURIComponent(location)}
-                            </div>
-                            <p style="color: #666; font-size: 12px; margin-top: 10px;">Erstelle einen QR-Code mit einem Online-Generator (z.B. qr-code-generator.com)</p>
-                        </div>
-                    </div>
-                `;
-                adminScreen.insertAdjacentHTML('beforeend', qrHTML);
-            } else {
-                const container = document.getElementById('qr-code-container');
-                qrSection.querySelector('h3').textContent = `🔗 QR-Code für ${location}`;
-                container.querySelector('div').textContent = `${window.location.href}?location=${encodeURIComponent(location)}`;
-            }
+            const container = document.getElementById('qr-code-container');
+            container.innerHTML = ''; // Clear previous QR code
+            
+            const baseUrl = window.location.origin + window.location.pathname;
+            const participantUrl = `${baseUrl}?location=${encodeURIComponent(location)}`;
+            
+            new QRCode(container, {
+                text: participantUrl,
+                width: 200,
+                height: 200,
+                colorDark: "#009892",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
         }
 
         // Fragen-Bibliothek anzeigen
@@ -1388,20 +1606,128 @@
             }
         }
 
+        // Fragen-Bibliothek mit Suche und Pagination
+        let libraryCurrentPage = 1;
+        let librarySearchTerm = '';
+        const ITEMS_PER_PAGE = 10;
+
+        function showQuestionLibrary() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            libraryCurrentPage = 1;
+            librarySearchTerm = '';
+            renderQuestionLibrary();
+        }
+
+        function renderQuestionLibrary() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            // Filter questions based on search term
+            let filteredQuestions = config.questions.filter(q => 
+                q.toLowerCase().includes(librarySearchTerm.toLowerCase())
+            );
+            
+            const totalPages = Math.ceil(filteredQuestions.length / ITEMS_PER_PAGE);
+            const startIndex = (libraryCurrentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const questionsToShow = filteredQuestions.slice(startIndex, endIndex);
+            
+            const libraryHTML = `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                    <h4 style="color: #667eea; margin-bottom: 10px;">📚 Fragen-Bibliothek</h4>
+                    
+                    <div class="search-input">
+                        <input type="text" 
+                            id="library-search" 
+                            placeholder="Fragen durchsuchen..." 
+                            value="${librarySearchTerm}"
+                            onkeyup="handleLibrarySearch(event)">
+                    </div>
+                    
+                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                        ${filteredQuestions.length} Fragen gefunden
+                    </p>
+                    
+                    ${questionsToShow.map((q, originalIdx) => {
+                        const actualIndex = config.questions.indexOf(q);
+                        const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                        return `
+                            <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                                <span style="font-size: 13px; flex: 1;">${q}</span>
+                                <button onclick="addQuestionFromLibrary(${actualIndex})" 
+                                        style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                        ${isUsed ? 'disabled' : ''}>
+                                    ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                    
+                    ${totalPages > 1 ? `
+                        <div class="pagination">
+                            <button onclick="changeLibraryPage(-1)" ${libraryCurrentPage === 1 ? 'disabled' : ''}>
+                                ◀ Zurück
+                            </button>
+                            <span>Seite ${libraryCurrentPage} von ${totalPages}</span>
+                            <button onclick="changeLibraryPage(1)" ${libraryCurrentPage === totalPages ? 'disabled' : ''}>
+                                Weiter ▶
+                            </button>
+                        </div>
+                    ` : ''}
+                    
+                    <button onclick="closeQuestionLibrary()" style="background: #6c757d; margin-top: 10px; width: 100%;">
+                        Schließen
+                    </button>
+                </div>
+            `;
+            
+            const existingLibrary = document.getElementById('question-library');
+            if (existingLibrary) {
+                existingLibrary.innerHTML = libraryHTML;
+            } else {
+                const questionsList = document.getElementById('questions-list');
+                questionsList.insertAdjacentHTML('afterend', `<div id="question-library">${libraryHTML}</div>`);
+            }
+        }
+
+        function handleLibrarySearch(event) {
+            librarySearchTerm = event.target.value;
+            libraryCurrentPage = 1;
+            renderQuestionLibrary();
+        }
+
+        function changeLibraryPage(direction) {
+            libraryCurrentPage += direction;
+            renderQuestionLibrary();
+        }
+
+        function closeQuestionLibrary() {
+            const library = document.getElementById('question-library');
+            if (library) {
+                library.remove();
+            }
+        }
+
         function saveAdminSettings() {
             const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle einen Standort aus!');
+                return;
+            }
+            
             const newDuration = parseInt(document.getElementById('admin-duration').value);
             
-            if (selectedLocation && config.locationConfigs[selectedLocation]) {
+            if (config.locationConfigs[selectedLocation]) {
                 config.locationConfigs[selectedLocation].roundDuration = newDuration;
-            } else {
-                config.roundDuration = newDuration;
             }
             
             localStorage.setItem('appConfig', JSON.stringify(config));
-            updateDurationDisplay();
-            loadLocationsSelect();
-            alert('Einstellungen gespeichert! ✓');
+            alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓');
         }
 
         // Bildschirm wechseln
@@ -1448,12 +1774,19 @@
         // URL-Parameter prüfen
         const urlParams = new URLSearchParams(window.location.search);
         const preselectedLocation = urlParams.get('location');
-        if (preselectedLocation) {
-            const locationSelect = document.getElementById('location-select');
-            if (locationSelect && config.locations.includes(preselectedLocation)) {
-                locationSelect.value = preselectedLocation;
-                updateDurationDisplay();
-            }
+
+        // Admin Route
+        if (window.location.hash === '#admin' || window.location.search.includes('admin=true')) {
+            showAdminPanel();
+        } else if (preselectedLocation && config.locations.includes(preselectedLocation)) {
+            // Teilnehmer-Modus mit vorausgewähltem Standort
+            currentLocation = preselectedLocation;
+            document.getElementById('location-info').style.display = 'block';
+            document.getElementById('location-name').textContent = '📍 ' + preselectedLocation;
+            updateDurationDisplay();
+        } else if (!preselectedLocation) {
+            // Kein Standort gewählt - zeige Hinweis
+            alert('Bitte verwende den Link, den du von deinem Organisator erhalten hast.');
         }
     </script>
 </body>
