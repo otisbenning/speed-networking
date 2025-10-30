@@ -594,6 +594,8 @@
             <div class="status-badge">✓ Eingecheckt</div>
             <div class="status-badge" id="location-badge"></div>
             
+            <div class="timer" id="lobby-timer" style="font-size: 2em; margin: 20px 0; display: none;">--:--</div>
+            
             <div class="participants-list" id="participants-list"></div>
             
             <p style="color: #666; margin: 20px 0;">
@@ -657,8 +659,18 @@
                 ✓ Ja, ich bin noch da!
             </button>
             
+            <div id="activity-timeout-warning" style="display: none; background: #fff3cd; padding: 15px; border-radius: 10px; margin-top: 20px;">
+                <strong>⏸️ Du wurdest von der nächsten Runde ausgeschlossen</strong><br>
+                <span style="font-size: 0.9em; color: #856404;">
+                    Möchtest du wieder mitmachen? Lade einfach die Seite neu (F5) und checke dich erneut ein.
+                </span>
+                <button onclick="location.reload()" style="background: #009892; margin-top: 10px; width: 100%;">
+                    🔄 Seite neu laden
+                </button>
+            </div>
+            
             <p style="color: #666; font-size: 0.9em; margin-top: 20px;">
-                Wenn du nicht antwortest, musst du bei der nächsten Runde aussetzen.
+                Wenn du nicht antwortest, wirst du bei der nächsten Runde ausgeschlossen.
             </p>
         </div>
 
@@ -1010,6 +1022,14 @@
                         showScreen('activity-check-screen');
                         playNotificationSound();
                     }
+                    
+                    // Zeige Timeout-Warning nach 30 Sekunden
+                    const timeoutWarning = document.getElementById('activity-timeout-warning');
+                    if (timeSinceReport > 30000) {
+                        timeoutWarning.style.display = 'block';
+                    } else {
+                        timeoutWarning.style.display = 'none';
+                    }
                 } else {
                     // Alte Meldung - automatisch löschen
                     delete inactiveReports[currentUser.id];
@@ -1106,6 +1126,16 @@
                 if (document.getElementById('lobby-screen').classList.contains('active')) {
                     updateParticipantsList();
                     checkStartConditions();
+                    
+                    // Zeige Timer in Lobby wenn Session läuft
+                    const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                    const sessionState = sessionStates[currentLocation];
+                    if (sessionState && sessionState.active) {
+                        const lobbyTimer = document.getElementById('lobby-timer');
+                        if (lobbyTimer && !waitingTimerInterval) {
+                            startWaitingTimer(sessionState.roundStartTime, sessionState.roundDuration);
+                        }
+                    }
                 }
 
                 if (document.getElementById('waiting-screen').classList.contains('active')) {
@@ -1481,32 +1511,45 @@
             }, 2000);
         }
 
-        // Waiting Timer starten
+        // Waiting Timer starten (für Lobby und Waiting Screen)
         function startWaitingTimer(roundStartTime, roundDuration) {
             // Alten Timer stoppen falls vorhanden
             if (waitingTimerInterval) {
                 clearInterval(waitingTimerInterval);
             }
             
-            const timerElement = document.getElementById('waiting-timer');
-            if (!timerElement) return;
+            const waitingTimerElement = document.getElementById('waiting-timer');
+            const lobbyTimerElement = document.getElementById('lobby-timer');
             
             const updateTimer = () => {
-                const now = Date.now();
-                const elapsed = now - roundStartTime;
-                const totalDuration = roundDuration * 60 * 1000;
-                const remaining = Math.max(0, totalDuration - elapsed);
-                
-                const minutes = Math.floor(remaining / 60000);
-                const seconds = Math.floor((remaining % 60000) / 1000);
-                
-                timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                
-                if (remaining <= 0) {
-                    clearInterval(waitingTimerInterval);
-                    timerElement.textContent = 'Gleich geht\'s los...';
-                }
-            };
+                    const now = Date.now();
+                    const elapsed = now - roundStartTime;
+                    const totalDuration = roundDuration * 60 * 1000;
+                    const remaining = Math.max(0, totalDuration - elapsed);
+                    
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    if (waitingTimerElement) {
+                        waitingTimerElement.textContent = timeText;
+                        if (remaining <= 0) {
+                            waitingTimerElement.textContent = 'Gleich geht\'s los...';
+                        }
+                    }
+                    
+                    if (lobbyTimerElement) {
+                        lobbyTimerElement.style.display = 'block';
+                        lobbyTimerElement.textContent = timeText;
+                        if (remaining <= 0) {
+                            lobbyTimerElement.textContent = 'Gleich geht\'s los...';
+                        }
+                    }
+                    
+                    if (remaining <= 0) {
+                        clearInterval(waitingTimerInterval);
+                    }
+                };
             
             updateTimer(); // Sofort einmal ausführen
             waitingTimerInterval = setInterval(updateTimer, 1000);
@@ -2431,8 +2474,8 @@
         function showScreen(screenId) {
             console.log('showScreen called with:', screenId);
             
-            // Stoppe Waiting-Timer wenn zu anderem Screen gewechselt wird
-            if (screenId !== 'waiting-screen') {
+            // Stoppe Waiting-Timer wenn zu anderem Screen gewechselt wird (außer Lobby)
+            if (screenId !== 'waiting-screen' && screenId !== 'lobby-screen') {
                 stopWaitingTimer();
             }
             
