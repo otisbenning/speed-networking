@@ -801,7 +801,6 @@
             return sessionStorage.getItem('adminAuth') === 'true';
         }
 
-        // Initialisierung
         function initStorage() {
             // Config laden oder initialisieren
             const savedConfig = localStorage.getItem('appConfig');
@@ -819,25 +818,20 @@
                 config.locationConfigs = locationConfigs;
                 localStorage.setItem('appConfig', JSON.stringify(config));
             }
-
             // Participants pro Location
             if (!localStorage.getItem('participants')) {
                 localStorage.setItem('participants', JSON.stringify({}));
             }
-
             // Session State pro Location
             if (!localStorage.getItem('sessionStates')) {
                 localStorage.setItem('sessionStates', JSON.stringify({}));
             }
-
             // Chats
             if (!localStorage.getItem('chats')) {
                 localStorage.setItem('chats', JSON.stringify({}));
             }
-
-            updateDurationDisplay();
-            loadLocationsSelect();
         }
+
 
         // Duration Display aktualisieren
         function updateDurationDisplay() {
@@ -1834,6 +1828,7 @@
                 updateDurationDisplay();
                 showScreen('checkin-screen');
             } 
+
             // Kein Standort gewählt
             else if (!preselectedLocation && hash !== '#admin') {
                 console.log('No location selected');
