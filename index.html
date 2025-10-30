@@ -1453,7 +1453,7 @@
             if (locationDetails) {
                 locationDetails.style.display = 'block';
             }
-
+            
             // Sicherstellen, dass locationConfigs existiert
             if (!config.locationConfigs) {
                 config.locationConfigs = {};
@@ -1470,7 +1470,10 @@
             const locationConfig = config.locationConfigs[selectedLocation];
             document.getElementById('admin-duration').value = locationConfig.roundDuration;
             loadQuestionsList(locationConfig.questions);
-            
+
+            // Teilnehmer-Link generieren
+            generateParticipantLink(selectedLocation);
+                        
             // QR-Code anzeigen
             displayQRCode(selectedLocation);
         }
@@ -1663,39 +1666,39 @@
                             id="library-search" 
                             placeholder="Fragen durchsuchen..." 
                             value="${librarySearchTerm}"
-                            onkeyup="handleLibrarySearch(event)">
+                            oninput="handleLibrarySearch(event)">
                     </div>
                     
-                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                    <p class="search-result-count" style="font-size: 12px; color: #666; margin-bottom: 10px;">
                         ${filteredQuestions.length} Fragen gefunden
                     </p>
                     
-                    ${questionsToShow.map((q, originalIdx) => {
-                        const actualIndex = config.questions.indexOf(q);
-                        const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
-                        return `
-                            <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-                                <span style="font-size: 13px; flex: 1;">${q}</span>
-                                <button onclick="addQuestionFromLibrary(${actualIndex})" 
-                                        style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
-                                        ${isUsed ? 'disabled' : ''}>
-                                    ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
-                                </button>
-                            </div>
-                        `;
-                    }).join('')}
+                    <div class="library-questions-list">
+                        ${questionsToShow.map((q) => {
+                            const actualIndex = config.questions.indexOf(q);
+                            const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                            return `
+                                <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                                    <span style="font-size: 13px; flex: 1;">${q}</span>
+                                    <button onclick="addQuestionFromLibrary(${actualIndex})" 
+                                            style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                            ${isUsed ? 'disabled' : ''}>
+                                        ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                                    </button>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
                     
-                    ${totalPages > 1 ? `
-                        <div class="pagination">
-                            <button onclick="changeLibraryPage(-1)" ${libraryCurrentPage === 1 ? 'disabled' : ''}>
-                                ◀ Zurück
-                            </button>
-                            <span>Seite ${libraryCurrentPage} von ${totalPages}</span>
-                            <button onclick="changeLibraryPage(1)" ${libraryCurrentPage === totalPages ? 'disabled' : ''}>
-                                Weiter ▶
-                            </button>
-                        </div>
-                    ` : ''}
+                    <div class="library-pagination pagination" style="${totalPages > 1 ? '' : 'display: none;'}">
+                        <button onclick="changeLibraryPage(-1)" ${libraryCurrentPage === 1 ? 'disabled' : ''}>
+                            ◀ Zurück
+                        </button>
+                        <span>Seite ${libraryCurrentPage} von ${totalPages}</span>
+                        <button onclick="changeLibraryPage(1)" ${libraryCurrentPage === totalPages ? 'disabled' : ''}>
+                            Weiter ▶
+                        </button>
+                    </div>
                     
                     <button onclick="closeQuestionLibrary()" style="background: #6c757d; margin-top: 10px; width: 100%;">
                         Schließen
@@ -1710,17 +1713,91 @@
                 const questionsList = document.getElementById('questions-list');
                 questionsList.insertAdjacentHTML('afterend', `<div id="question-library">${libraryHTML}</div>`);
             }
+            
+            // Fokus zurück auf Suchfeld setzen
+            setTimeout(() => {
+                const searchInput = document.getElementById('library-search');
+                if (searchInput && document.activeElement !== searchInput) {
+                    searchInput.focus();
+                    // Cursor ans Ende setzen
+                    searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+                }
+            }, 0);
         }
 
         function handleLibrarySearch(event) {
             librarySearchTerm = event.target.value;
             libraryCurrentPage = 1;
-            renderQuestionLibrary();
+            
+            // Update nur den Inhalt, nicht das komplette HTML
+            updateQuestionLibraryContent();
+        }
+
+        function updateQuestionLibraryContent() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            // Filter questions based on search term
+            let filteredQuestions = config.questions.filter(q => 
+                q.toLowerCase().includes(librarySearchTerm.toLowerCase())
+            );
+            
+            const totalPages = Math.ceil(filteredQuestions.length / ITEMS_PER_PAGE);
+            const startIndex = (libraryCurrentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const questionsToShow = filteredQuestions.slice(startIndex, endIndex);
+            
+            // Nur den Fragen-Container und Pagination aktualisieren
+            const library = document.getElementById('question-library');
+            if (!library) return;
+            
+            // Update result count
+            const resultCount = library.querySelector('.search-result-count');
+            if (resultCount) {
+                resultCount.textContent = `${filteredQuestions.length} Fragen gefunden`;
+            }
+            
+            // Update questions list
+            const questionsList = library.querySelector('.library-questions-list');
+            if (questionsList) {
+                questionsList.innerHTML = questionsToShow.map((q) => {
+                    const actualIndex = config.questions.indexOf(q);
+                    const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                    return `
+                        <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                            <span style="font-size: 13px; flex: 1;">${q}</span>
+                            <button onclick="addQuestionFromLibrary(${actualIndex})" 
+                                    style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                    ${isUsed ? 'disabled' : ''}>
+                                ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // Update pagination
+            const pagination = library.querySelector('.library-pagination');
+            if (pagination) {
+                if (totalPages > 1) {
+                    pagination.innerHTML = `
+                        <button onclick="changeLibraryPage(-1)" ${libraryCurrentPage === 1 ? 'disabled' : ''}>
+                            ◀ Zurück
+                        </button>
+                        <span>Seite ${libraryCurrentPage} von ${totalPages}</span>
+                        <button onclick="changeLibraryPage(1)" ${libraryCurrentPage === totalPages ? 'disabled' : ''}>
+                            Weiter ▶
+                        </button>
+                    `;
+                    pagination.style.display = 'flex';
+                } else {
+                    pagination.style.display = 'none';
+                }
+            }
         }
 
         function changeLibraryPage(direction) {
             libraryCurrentPage += direction;
-            renderQuestionLibrary();
+            updateQuestionLibraryContent();
         }
 
         function closeQuestionLibrary() {
