@@ -1019,26 +1019,24 @@
 
         // Gemeldete inaktive User aus Matching entfernen
         function removeReportedInactiveUsers() {
-            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
-            const participants = JSON.parse(localStorage.getItem('participants'));
+            // Diese Funktion wird nicht mehr benötigt, da die Prüfung direkt in createMatches() erfolgt
+            // Aber wir behalten sie für Kompatibilität und mögliche zukünftige Cleanup-Aufgaben
             
-            Object.keys(participants).forEach(location => {
-                participants[location] = participants[location].map(p => {
-                    // Wenn User gemeldet wurde und nicht bestätigt hat
-                    if (inactiveReports[p.id] && inactiveReports[p.id].length > 0) {
-                        const reportTime = inactiveReports[p.id][0].timestamp;
-                        const now = Date.now();
-                        
-                        // Wenn Meldung älter als 30 Sekunden und keine Bestätigung
-                        if (now - reportTime > 30000) {
-                            p.reportedInactive = true;
-                        }
-                    }
-                    return p;
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            const now = Date.now();
+            
+            // Alte Meldungen (>5 Minuten) löschen, um LocalStorage sauber zu halten
+            Object.keys(inactiveReports).forEach(userId => {
+                inactiveReports[userId] = inactiveReports[userId].filter(report => {
+                    return (now - report.timestamp) < 300000; // 5 Minuten
                 });
+                
+                if (inactiveReports[userId].length === 0) {
+                    delete inactiveReports[userId];
+                }
             });
             
-            localStorage.setItem('participants', JSON.stringify(participants));
+            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
         }
 
         // Page Unload - echter Tab-Schluss
@@ -1305,8 +1303,25 @@
         function createMatches(participants) {
             console.log('createMatches called with participants:', participants.map(p => p.name));
             
-            // Markierte inaktive User rausfiltern
-            const activeParticipants = participants.filter(p => !p.reportedInactive);
+            // Gemeldete inaktive User identifizieren
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            const now = Date.now();
+            
+            // Markiere gemeldete User, die nicht bestätigt haben (>30 Sekunden alt)
+            const activeParticipants = participants.filter(p => {
+                if (inactiveReports[p.id] && inactiveReports[p.id].length > 0) {
+                    const reportTime = inactiveReports[p.id][0].timestamp;
+                    const timeSinceReport = now - reportTime;
+                    
+                    if (timeSinceReport > 30000) {
+                        console.log('Excluding reported inactive user:', p.name, 'Report age:', Math.round(timeSinceReport/1000), 'seconds');
+                        return false; // User ausschließen
+                    }
+                }
+                return true; // User ist aktiv
+            });
+            
+            console.log('Active participants after filtering:', activeParticipants.map(p => p.name));
             
             const shuffled = [...activeParticipants].sort(() => Math.random() - 0.5);
             const matches = {};
