@@ -914,6 +914,8 @@
             currentLocation = location;
 
             locationParticipants.push(currentUser);
+            
+            console.log('Checked in as:', currentUser.name, 'at location:', location);
             participants[location] = locationParticipants;
             localStorage.setItem('participants', JSON.stringify(participants));
             
@@ -995,10 +997,23 @@
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                 const sessionState = sessionStates[currentLocation];
                 
-                // Nur starten wenn: Session aktiv UND wir noch nicht aktiv sind UND nicht schon im Conversation-Screen
-                if (sessionState && sessionState.active && !sessionActive) {
+                // Prüfe ob ich in den aktuellen Matches bin
+                const amIInMatches = sessionState && 
+                                     sessionState.matches && 
+                                     sessionState.matches[currentUser.id] !== undefined;
+                
+                // Nur starten wenn: Session aktiv UND wir noch nicht aktiv sind UND wir in den Matches sind
+                if (sessionState && sessionState.active && !sessionActive && amIInMatches) {
+                    console.log('Session active and I am in matches, starting round...');
                     sessionActive = true;
                     startRound();
+                } else if (sessionState && sessionState.active && !sessionActive && !amIInMatches) {
+                    // Session läuft, aber ich bin nicht dabei → Bleibe in Lobby
+                    console.log('Session active but I am not in matches, staying in lobby...');
+                    if (!document.getElementById('lobby-screen').classList.contains('active')) {
+                        showScreen('lobby-screen');
+                        updateParticipantsList();
+                    }
                 } else if ((!sessionState || !sessionState.active) && sessionActive) {
                     sessionActive = false;
                     showScreen('lobby-screen');
@@ -1332,14 +1347,27 @@
                     startChatSync();
                     updateChatMessages();
                 } else {
+                    // Kein Partner in dieser Runde
                     currentChatRoom = null;
                     showScreen('waiting-screen');
                     updateWaitingParticipantsList();
                     
-                    const timeLeft = config.roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
-                    setTimeout(() => {
+                    console.log('No partner for this round, waiting...');
+                    
+                    // Berechne verbleibende Zeit basierend auf roundDuration im sessionState
+                    const roundDuration = sessionState.roundDuration || 10;
+                    const timeLeft = roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
+                    
+                    console.log('Time left until next round:', Math.round(timeLeft / 1000), 'seconds');
+                    
+                    if (timeLeft > 0) {
+                        setTimeout(() => {
+                            checkForNextRound();
+                        }, timeLeft);
+                    } else {
+                        // Zeit ist schon abgelaufen, sofort zur nächsten Runde
                         checkForNextRound();
-                    }, timeLeft);
+                    }
                 }
             }, 2000);
         }
@@ -1467,13 +1495,12 @@
                 
                 // Reset für alle Teilnehmer
                 currentRoundNumber = 0;
+                
+                // WICHTIG: sessionActive muss HIER auf false bleiben
+                // Der syncInterval wird es auf true setzen wenn die neue Runde bereit ist
                 sessionActive = false;
                 
-                // Warte nochmal kurz damit Coordinator Zeit hat zu schreiben
-                setTimeout(() => {
-                    sessionActive = true;
-                    startRound();
-                }, 500);
+                console.log('Round transition complete, waiting for sync to trigger next round...');
                 
             }, 1000);
         }
