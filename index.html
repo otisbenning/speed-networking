@@ -1041,12 +1041,15 @@
                 chats[currentChatRoom] = [];
             }
 
-            chats[currentChatRoom].push({
+            const chatMessage = {
                 senderId: currentUser.id,
                 senderName: currentUser.name,
                 message: message,
                 timestamp: Date.now()
-            });
+            };
+            
+            console.log('Sending chat message:', chatMessage); // Debug-Zeile
+            chats[currentChatRoom].push(chatMessage);
 
             localStorage.setItem('chats', JSON.stringify(chats));
             input.value = '';
@@ -1074,14 +1077,17 @@
                 messagesContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Noch keine Nachrichten. Sag Hallo! 👋</p>';
                 return;
             }
-
+            
             messages.forEach(msg => {
+                console.log('Message:', msg.senderName, 'CurrentUser:', currentUser.name, 'IDs:', msg.senderId, currentUser.id); // Debug
+                const isOwnMessage = msg.senderId === currentUser.id;
+                
                 const messageDiv = document.createElement('div');
-                messageDiv.className = msg.senderId === currentUser.id ? 'chat-message own' : 'chat-message other';
+                messageDiv.className = isOwnMessage ? 'chat-message own' : 'chat-message other';
                 
                 const senderDiv = document.createElement('div');
                 senderDiv.className = 'sender';
-                senderDiv.textContent = msg.senderId === currentUser.id ? 'Du' : msg.senderName;
+                senderDiv.textContent = isOwnMessage ? 'Du' : msg.senderName;
                 
                 const textDiv = document.createElement('div');
                 textDiv.textContent = msg.message;
