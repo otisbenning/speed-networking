@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed Networking - Café Meet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        .admin-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .admin-btn:hover {
+            background: #5a6268;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            font-weight: bold;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .participants-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .participant {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+
+        .timer {
+            font-size: 3em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 30px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .timer.warning {
+            color: #e74c3c;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .partner-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .partner-name {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .question-card {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .question-card h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .question-card p {
+            color: #856404;
+            line-height: 1.6;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            background: #28a745;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 10px 0;
+        }
+
+        .round-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            color: #1976d2;
+            font-weight: bold;
+        }
+
+        .bell-animation {
+            font-size: 4em;
+            animation: ring 0.5s ease-in-out 3;
+        }
+
+        @keyframes ring {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-15deg); }
+            75% { transform: rotate(15deg); }
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        /* Chat Styles */
+        .chat-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            height: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .chat-message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .chat-message.own {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .chat-message.other {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        .chat-message .sender {
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .chat-send-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: auto;
+        }
+
+        .chat-send-btn:hover {
+            background: #5568d3;
+        }
+
+        /* Admin Panel Styles */
+        .admin-section {
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .admin-section h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .questions-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .question-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .question-item button {
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .locations-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .location-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .location-item button {
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .save-btn {
+            background: #28a745;
+            margin-top: 10px;
+        }
+
+        .back-btn {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Check-in Screen -->
+        <div id="checkin-screen" class="screen active">
+            <button class="admin-btn" onclick="showAdminPanel()">⚙️ Admin</button>
+            
+            <h1>🎯 Speed Networking</h1>
+            <p class="subtitle">Willkommen im Café Meet!</p>
+            
+            <div class="info-box">
+                <strong>So funktioniert's:</strong><br>
+                • Wähle deinen Standort<br>
+                • Gib deinen Namen ein<br>
+                • Alle Geräte piepen gleichzeitig<br>
+                • Chatte mit deinem Gesprächspartner<br>
+                • Nach <span id="duration-display">10</span> Minuten zur nächsten Person!
+            </div>
+
+            <select id="location-select">
+                <option value="">Standort wählen...</option>
+            </select>
+
+            <input type="text" id="name-input" placeholder="Dein Name" maxlength="30">
+            <button id="checkin-btn" onclick="checkIn()">Einchecken 📱</button>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="screen">
+            <h1>⏳ Lobby</h1>
+            <p class="subtitle">Warte auf andere Teilnehmer...</p>
+            
+            <div class="status-badge">✓ Eingecheckt</div>
+            <div class="status-badge" id="location-badge"></div>
+            
+            <div class="participants-list" id="participants-list"></div>
+            
+            <p style="color: #666; margin: 20px 0;">
+                Die Runde startet automatisch, wenn mindestens 2 Personen eingecheckt sind.
+            </p>
+            
+            <button class="logout-btn" onclick="logout()">Auschecken</button>
+        </div>
+
+        <!-- Matching Screen -->
+        <div id="matching-screen" class="screen">
+            <div class="bell-animation" id="bell">🔔</div>
+            <h1>Es geht los!</h1>
+            <p class="subtitle">Dein Gesprächspartner wartet...</p>
+        </div>
+
+        <!-- Conversation Screen -->
+        <div id="conversation-screen" class="screen">
+            <div class="round-info" id="round-info">Runde 1</div>
+            
+            <h2>Dein Gesprächspartner:</h2>
+            <div class="partner-card">
+                <div class="partner-name" id="partner-name">---</div>
+                <p>Viel Spaß beim Kennenlernen! 😊</p>
+            </div>
+            
+            <div class="question-card">
+                <h3>💭 Gesprächsthema:</h3>
+                <p id="conversation-question">---</p>
+            </div>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages"></div>
+                <div class="chat-input-container">
+                    <input type="text" 
+                           class="chat-input" 
+                           id="chat-input" 
+                           placeholder="Nachricht eingeben..." 
+                           maxlength="200"
+                           onkeypress="handleChatKeypress(event)">
+                    <button class="chat-send-btn" onclick="sendChatMessage()">📤</button>
+                </div>
+            </div>
+            
+            <div class="timer" id="timer">10:00</div>
+            
+            <button class="logout-btn" onclick="logout()">Auschecken</button>
+        </div>
+
+        <!-- Waiting Screen -->
+        <div id="waiting-screen" class="screen">
+            <h1>⏸️ Pause</h1>
+            <p class="subtitle">Warte auf die nächste Runde...</p>
+            
+            <div class="participants-list" id="waiting-participants-list"></div>
+            
+            <p style="color: #666; margin: 20px 0;">
+                Die nächste Runde beginnt gleich!
+            </p>
+            
+            <button class="logout-btn" onclick="logout()">Auschecken</button>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="admin-screen" class="screen">
+            <h1>⚙️ Admin Panel</h1>
+            <p class="subtitle">Einstellungen verwalten</p>
+
+            <!-- Session Duration -->
+            <div class="admin-section">
+                <h3>⏱️ Session-Dauer</h3>
+                <div class="form-group">
+                    <label>Dauer pro Runde (Minuten)</label>
+                    <select id="admin-duration">
+                        <option value="1">1 Minute</option>
+                        <option value="3">3 Minuten</option>
+                        <option value="5">5 Minuten</option>
+                        <option value="10" selected>10 Minuten</option>
+                        <option value="15">15 Minuten</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Locations -->
+            <div class="admin-section">
+                <h3>📍 Standorte</h3>
+                <div class="locations-list" id="locations-list"></div>
+                <input type="text" id="new-location-input" placeholder="Neuer Standort...">
+                <button onclick="addLocation()">Standort hinzufügen</button>
+            </div>
+
+            <!-- Questions -->
+            <div class="admin-section">
+                <h3>💭 Gesprächsfragen</h3>
+                <div class="questions-list" id="questions-list"></div>
+                <textarea id="new-question-input" placeholder="Neue Frage eingeben..."></textarea>
+                <button onclick="addQuestion()">Frage hinzufügen</button>
+            </div>
+
+            <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
+            <button class="back-btn" onclick="closeAdminPanel()">← Zurück</button>
+        </div>
+    </div>
+
+    <script>
+        // Konfiguration
+        let config = {
+            roundDuration: 10, // in Minuten
+            locations: ['Café Central', 'Büro Berlin', 'CoWorking Köln'],
+            questions: [
+                "Was war dein bestes Erlebnis in den letzten 30 Tagen?",
+                "Wenn du eine Fähigkeit sofort perfekt beherrschen könntest - welche wäre es?",
+                "Was ist deine Lieblings-Art, deine Freizeit zu verbringen?",
+                "Welches Buch oder welcher Film hat dich zuletzt beeindruckt?",
+                "Wenn du irgendwohin reisen könntest - wohin würdest du gehen?",
+                "Was motiviert dich am meisten im Leben?",
+                "Welche drei Dinge würdest du auf eine einsame Insel mitnehmen?",
+                "Was war die beste Entscheidung, die du je getroffen hast?",
+                "Wenn du ein Talent hättest, das niemand kennt - welches wäre es?",
+                "Was steht ganz oben auf deiner Bucket List?"
+            ]
+        };
+
+        let currentUser = null;
+        let sessionActive = false;
+        let currentLocation = null;
+        let roundTimer = null;
+        let syncInterval = null;
+        let chatSyncInterval = null;
+        let currentChatRoom = null;
+        let visibilityCheckInterval = null;
+        let lastVisibilityState = document.visibilityState;
+
+        // Initialisierung
+        function initStorage() {
+            // Config laden oder initialisieren
+            const savedConfig = localStorage.getItem('appConfig');
+            if (savedConfig) {
+                config = JSON.parse(savedConfig);
+            } else {
+                localStorage.setItem('appConfig', JSON.stringify(config));
+            }
+
+            // Participants pro Location
+            if (!localStorage.getItem('participants')) {
+                localStorage.setItem('participants', JSON.stringify({}));
+            }
+
+            // Session State pro Location
+            if (!localStorage.getItem('sessionStates')) {
+                localStorage.setItem('sessionStates', JSON.stringify({}));
+            }
+
+            // Chats
+            if (!localStorage.getItem('chats')) {
+                localStorage.setItem('chats', JSON.stringify({}));
+            }
+
+            updateDurationDisplay();
+            loadLocationsSelect();
+        }
+
+        // Duration Display aktualisieren
+        function updateDurationDisplay() {
+            const display = document.getElementById('duration-display');
+            if (display) {
+                display.textContent = config.roundDuration;
+            }
+        }
+
+        // Locations Select laden
+        function loadLocationsSelect() {
+            const select = document.getElementById('location-select');
+            select.innerHTML = '<option value="">Standort wählen...</option>';
+            config.locations.forEach(loc => {
+                const option = document.createElement('option');
+                option.value = loc;
+                option.textContent = loc;
+                select.appendChild(option);
+            });
+        }
+
+        // Check-in
+        function checkIn() {
+            const name = document.getElementById('name-input').value.trim();
+            const location = document.getElementById('location-select').value;
+            
+            if (!location) {
+                alert('Bitte wähle einen Standort aus!');
+                return;
+            }
+
+            if (!name) {
+                alert('Bitte gib deinen Namen ein!');
+                return;
+            }
+
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[location] || [];
+            
+            if (locationParticipants.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+                alert('Dieser Name ist bereits am Standort vergeben. Bitte wähle einen anderen Namen.');
+                return;
+            }
+
+            const userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            currentUser = {
+                id: userId,
+                name: name,
+                joinedAt: Date.now(),
+                lastActivity: Date.now()
+            };
+            currentLocation = location;
+
+            locationParticipants.push(currentUser);
+            participants[location] = locationParticipants;
+            localStorage.setItem('participants', JSON.stringify(participants));
+            
+            document.getElementById('location-badge').textContent = '📍 ' + location;
+            
+            showScreen('lobby-screen');
+            updateParticipantsList();
+            startSync();
+            startVisibilityCheck();
+        }
+
+        // Visibility Check - erkennt Tab-Schließen, aber nicht Hintergrund/Sperren
+        function startVisibilityCheck() {
+            // Heartbeat alle 2 Sekunden
+            visibilityCheckInterval = setInterval(() => {
+                if (currentUser && currentLocation) {
+                    updateHeartbeat();
+                }
+            }, 2000);
+
+            // Cleanup bei Page Unload (echter Tab-Schluss)
+            window.addEventListener('beforeunload', handlePageUnload);
+            
+            // Visibility Change für Debugging
+            document.addEventListener('visibilitychange', () => {
+                lastVisibilityState = document.visibilityState;
+                if (document.visibilityState === 'visible' && currentUser) {
+                    updateHeartbeat();
+                }
+            });
+        }
+
+        // Heartbeat aktualisieren
+        function updateHeartbeat() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            
+            const userIndex = locationParticipants.findIndex(p => p.id === currentUser.id);
+            if (userIndex !== -1) {
+                locationParticipants[userIndex].lastActivity = Date.now();
+                participants[currentLocation] = locationParticipants;
+                localStorage.setItem('participants', JSON.stringify(participants));
+            }
+        }
+
+        // Page Unload - echter Tab-Schluss
+        function handlePageUnload(e) {
+            if (currentUser && currentLocation) {
+                logout(true);
+            }
+        }
+
+        // Cleanup inaktiver Nutzer (ohne Heartbeat für >10 Sekunden)
+        function cleanupInactiveUsers() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const now = Date.now();
+            const TIMEOUT = 10000; // 10 Sekunden
+
+            Object.keys(participants).forEach(location => {
+                const before = participants[location].length;
+                participants[location] = participants[location].filter(p => 
+                    now - p.lastActivity < TIMEOUT
+                );
+                const after = participants[location].length;
+                
+                if (before !== after) {
+                    console.log(`Cleanup: ${before - after} inaktive Nutzer entfernt in ${location}`);
+                }
+            });
+
+            localStorage.setItem('participants', JSON.stringify(participants));
+        }
+
+        // Synchronisation starten
+        function startSync() {
+            syncInterval = setInterval(() => {
+                cleanupInactiveUsers();
+                
+                const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                const sessionState = sessionStates[currentLocation];
+                
+                if (sessionState && sessionState.active && !sessionActive) {
+                    sessionActive = true;
+                    startRound();
+                } else if ((!sessionState || !sessionState.active) && sessionActive) {
+                    sessionActive = false;
+                    showScreen('lobby-screen');
+                    updateParticipantsList();
+                }
+                
+                if (document.getElementById('lobby-screen').classList.contains('active')) {
+                    updateParticipantsList();
+                    checkStartConditions();
+                }
+
+                if (document.getElementById('waiting-screen').classList.contains('active')) {
+                    updateWaitingParticipantsList();
+                }
+            }, 1000);
+        }
+
+        // Chat-Synchronisation starten
+        function startChatSync() {
+            chatSyncInterval = setInterval(() => {
+                if (currentChatRoom) {
+                    updateChatMessages();
+                }
+            }, 500);
+        }
+
+        // Chat-Synchronisation stoppen
+        function stopChatSync() {
+            if (chatSyncInterval) {
+                clearInterval(chatSyncInterval);
+                chatSyncInterval = null;
+            }
+        }
+
+        // Chat-Nachricht senden
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            
+            if (!message || !currentChatRoom) return;
+
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            if (!chats[currentChatRoom]) {
+                chats[currentChatRoom] = [];
+            }
+
+            chats[currentChatRoom].push({
+                senderId: currentUser.id,
+                senderName: currentUser.name,
+                message: message,
+                timestamp: Date.now()
+            });
+
+            localStorage.setItem('chats', JSON.stringify(chats));
+            input.value = '';
+            updateChatMessages();
+        }
+
+        // Enter-Taste im Chat
+        function handleChatKeypress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        // Chat-Nachrichten aktualisieren
+        function updateChatMessages() {
+            const messagesContainer = document.getElementById('chat-messages');
+            if (!currentChatRoom) return;
+
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            const messages = chats[currentChatRoom] || [];
+
+            messagesContainer.innerHTML = '';
+            
+            if (messages.length === 0) {
+                messagesContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Noch keine Nachrichten. Sag Hallo! 👋</p>';
+                return;
+            }
+
+            messages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = msg.senderId === currentUser.id ? 'chat-message own' : 'chat-message other';
+                
+                const senderDiv = document.createElement('div');
+                senderDiv.className = 'sender';
+                senderDiv.textContent = msg.senderId === currentUser.id ? 'Du' : msg.senderName;
+                
+                const textDiv = document.createElement('div');
+                textDiv.textContent = msg.message;
+                
+                messageDiv.appendChild(senderDiv);
+                messageDiv.appendChild(textDiv);
+                messagesContainer.appendChild(messageDiv);
+            });
+
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Chat löschen
+        function clearChat(chatRoom) {
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            delete chats[chatRoom];
+            localStorage.setItem('chats', JSON.stringify(chats));
+        }
+
+        // Prüfe Start-Bedingungen
+        function checkStartConditions() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            
+            if (locationParticipants.length >= 2 && (!sessionState || !sessionState.active)) {
+                setTimeout(() => {
+                    const currentParticipants = JSON.parse(localStorage.getItem('participants'));
+                    const currentLocationParticipants = currentParticipants[currentLocation] || [];
+                    const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+                    const currentSessionState = currentSessionStates[currentLocation];
+                    
+                    if (currentLocationParticipants.length >= 2 && (!currentSessionState || !currentSessionState.active)) {
+                        startSession();
+                    }
+                }, 3000);
+            }
+        }
+
+        // Session starten
+        function startSession() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            if (sessionState && sessionState.active) return;
+            
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            if (locationParticipants.length < 2) return;
+            
+            const matches = createMatches(locationParticipants);
+            
+            const newSessionState = {
+                active: true,
+                roundNumber: 1,
+                roundStartTime: Date.now(),
+                matches: matches
+            };
+            
+            sessionStates[currentLocation] = newSessionState;
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+        }
+
+        // Paarungen erstellen
+        function createMatches(participants) {
+            const shuffled = [...participants].sort(() => Math.random() - 0.5);
+            const matches = {};
+            
+            for (let i = 0; i < shuffled.length; i += 2) {
+                if (i + 1 < shuffled.length) {
+                    const chatRoomId = [shuffled[i].id, shuffled[i + 1].id].sort().join('_');
+                    
+                    matches[shuffled[i].id] = {
+                        partnerId: shuffled[i + 1].id,
+                        partnerName: shuffled[i + 1].name,
+                        chatRoom: chatRoomId
+                    };
+                    matches[shuffled[i + 1].id] = {
+                        partnerId: shuffled[i].id,
+                        partnerName: shuffled[i].name,
+                        chatRoom: chatRoomId
+                    };
+                } else {
+                    matches[shuffled[i].id] = {
+                        partnerId: null,
+                        partnerName: null,
+                        chatRoom: null
+                    };
+                }
+            }
+            
+            return matches;
+        }
+
+        // Runde starten
+        function startRound() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            
+            showScreen('matching-screen');
+            playNotificationSound();
+            
+            setTimeout(() => {
+                const match = sessionState.matches[currentUser.id];
+                
+                if (match && match.partnerId) {
+                    currentChatRoom = match.chatRoom;
+                    
+                    document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
+                    document.getElementById('partner-name').textContent = match.partnerName;
+                    document.getElementById('conversation-question').textContent = 
+                        config.questions[Math.floor(Math.random() * config.questions.length)];
+                    
+                    document.getElementById('chat-messages').innerHTML = '';
+                    document.getElementById('chat-input').value = '';
+                    
+                    showScreen('conversation-screen');
+                    startTimer(sessionState.roundStartTime);
+                    startChatSync();
+                    updateChatMessages();
+                } else {
+                    currentChatRoom = null;
+                    showScreen('waiting-screen');
+                    updateWaitingParticipantsList();
+                    
+                    const timeLeft = config.roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
+                    setTimeout(() => {
+                        checkForNextRound();
+                    }, timeLeft);
+                }
+            }, 2000);
+        }
+
+        // Timer starten
+        function startTimer(startTime) {
+            const timerElement = document.getElementById('timer');
+            const ROUND_DURATION = config.roundDuration * 60 * 1000;
+            
+            function updateTimer() {
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, ROUND_DURATION - elapsed);
+                
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                
+                timerElement.textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (remaining < 60000) {
+                    timerElement.classList.add('warning');
+                } else {
+                    timerElement.classList.remove('warning');
+                }
+                
+                if (remaining === 0) {
+                    clearInterval(roundTimer);
+                    stopChatSync();
+                    
+                    // Chat löschen
+                    if (currentChatRoom) {
+                        clearChat(currentChatRoom);
+                        currentChatRoom = null;
+                    }
+                    
+                    checkForNextRound();
+                }
+            }
+            
+            updateTimer();
+            roundTimer = setInterval(updateTimer, 100);
+        }
+
+        // Nächste Runde prüfen
+        function checkForNextRound() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[currentLocation];
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            
+            if (locationParticipants.length < 2) {
+                endSession();
+                return;
+            }
+            
+            const isCoordinator = currentUser.id === locationParticipants[0].id;
+            
+            if (isCoordinator) {
+                const matches = createMatches(locationParticipants);
+                const newSessionState = {
+                    active: true,
+                    roundNumber: sessionState.roundNumber + 1,
+                    roundStartTime: Date.now(),
+                    matches: matches
+                };
+                sessionStates[currentLocation] = newSessionState;
+                localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            }
+            
+            setTimeout(() => {
+                startRound();
+            }, 1000);
+        }
+
+        // Session beenden
+        function endSession() {
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            sessionStates[currentLocation] = {
+                active: false,
+                roundNumber: 0,
+                roundStartTime: null,
+                matches: {}
+            };
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            sessionActive = false;
+            stopChatSync();
+            showScreen('lobby-screen');
+            updateParticipantsList();
+        }
+
+        // Teilnehmerliste aktualisieren
+        function updateParticipantsList() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            const listElement = document.getElementById('participants-list');
+            
+            if (locationParticipants.length === 0) {
+                listElement.innerHTML = '<p style="color: #999;">Noch keine Teilnehmer...</p>';
+            } else {
+                listElement.innerHTML = locationParticipants
+                    .map(p => `<div class="participant">${p.name}</div>`)
+                    .join('');
+            }
+        }
+
+        // Wartende Teilnehmerliste aktualisieren
+        function updateWaitingParticipantsList() {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            const listElement = document.getElementById('waiting-participants-list');
+            
+            listElement.innerHTML = locationParticipants
+                .map(p => `<div class="participant">${p.name}</div>`)
+                .join('');
+        }
+
+        // Logout
+        function logout(skipConfirm = false) {
+            if (!skipConfirm && !confirm('Möchtest du dich wirklich auschecken?')) {
+                return;
+            }
+            
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[currentLocation] || [];
+            participants[currentLocation] = locationParticipants.filter(p => p.id !== currentUser.id);
+            localStorage.setItem('participants', JSON.stringify(participants));
+            
+            clearInterval(syncInterval);
+            clearInterval(roundTimer);
+            clearInterval(visibilityCheckInterval);
+            stopChatSync();
+            
+            if (currentChatRoom) {
+                clearChat(currentChatRoom);
+            }
+            
+            window.removeEventListener('beforeunload', handlePageUnload);
+            
+            currentUser = null;
+            currentLocation = null;
+            sessionActive = false;
+            currentChatRoom = null;
+            
+            showScreen('checkin-screen');
+            document.getElementById('name-input').value = '';
+            document.getElementById('location-select').selectedIndex = 0;
+        }
+
+        // Admin Panel
+        function showAdminPanel() {
+            loadAdminSettings();
+            showScreen('admin-screen');
+        }
+
+        function closeAdminPanel() {
+            showScreen('checkin-screen');
+        }
+
+        function loadAdminSettings() {
+            document.getElementById('admin-duration').value = config.roundDuration;
+            
+            const locationsList = document.getElementById('locations-list');
+            locationsList.innerHTML = config.locations.map((loc, idx) => `
+                <div class="location-item">
+                    <span>${loc}</span>
+                    <button onclick="removeLocation(${idx})">🗑️</button>
+                </div>
+            `).join('');
+            
+            const questionsList = document.getElementById('questions-list');
+            questionsList.innerHTML = config.questions.map((q, idx) => `
+                <div class="question-item">
+                    <span>${q}</span>
+                    <button onclick="removeQuestion(${idx})">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        function addLocation() {
+            const input = document.getElementById('new-location-input');
+            const location = input.value.trim();
+            
+            if (!location) {
+                alert('Bitte gib einen Standort ein!');
+                return;
+            }
+            
+            if (config.locations.includes(location)) {
+                alert('Dieser Standort existiert bereits!');
+                return;
+            }
+            
+            config.locations.push(location);
+            input.value = '';
+            loadAdminSettings();
+        }
+
+        function removeLocation(index) {
+            if (confirm('Möchtest du diesen Standort wirklich löschen?')) {
+                config.locations.splice(index, 1);
+                loadAdminSettings();
+            }
+        }
+
+        function addQuestion() {
+            const input = document.getElementById('new-question-input');
+            const question = input.value.trim();
+            
+            if (!question) {
+                alert('Bitte gib eine Frage ein!');
+                return;
+            }
+            
+            config.questions.push(question);
+            input.value = '';
+            loadAdminSettings();
+        }
+
+        function removeQuestion(index) {
+            if (confirm('Möchtest du diese Frage wirklich löschen?')) {
+                config.questions.splice(index, 1);
+                loadAdminSettings();
+            }
+        }
+
+        function saveAdminSettings() {
+            config.roundDuration = parseInt(document.getElementById('admin-duration').value);
+            localStorage.setItem('appConfig', JSON.stringify(config));
+            updateDurationDisplay();
+            loadLocationsSelect();
+            alert('Einstellungen gespeichert! ✓');
+        }
+
+        // Bildschirm wechseln
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // Benachrichtigungston
+        function playNotificationSound() {
+            const bell = document.getElementById('bell');
+            bell.style.display = 'block';
+            setTimeout(() => {
+                bell.style.display = 'none';
+            }, 1500);
+            
+            if ('AudioContext' in window || 'webkitAudioContext' in window) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioContext();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        // Initialisierung
+        window.addEventListener('load', () => {
+            initStorage();
+        });
+    </script>
+</body>
+</html>
