@@ -565,7 +565,7 @@
 <body>
     <div class="container">
         <!-- Check-in Screen -->
-        <div id="checkin-screen" class="screen active">
+        <div id="checkin-screen" class="screen">
             <h1>🎯 Speed Networking</h1>
             <p class="subtitle">Willkommen im Café Meet!</p>
             
@@ -736,6 +736,16 @@
     </div>
 
     <script>
+        // DEBUG: Routing testen
+        console.log('=== PAGE LOAD ===');
+        console.log('URL:', window.location.href);
+        console.log('Hash:', window.location.hash);
+        console.log('Search:', window.location.search);
+
+        // Sofortiger Admin-Check beim Laden
+        if (window.location.hash === '#admin') {
+            console.log('Admin hash detected on load!');
+        }
         // Konfiguration
         const ADMIN_PASSWORD_HASH = 'swaf2024'; // TODO: In Produktion durch echten Hash ersetzen
         let isAdminAuthenticated = false;
@@ -1346,9 +1356,10 @@
 
         // Admin Panel Navigation
         function showAdminPanel() {
+            console.log('showAdminPanel called, Auth:', checkAdminAuth());
             if (checkAdminAuth()) {
-                loadAdminSettings();
                 showScreen('admin-screen');
+                loadAdminSettings();
             } else {
                 showScreen('admin-login-screen');
             }
@@ -1434,14 +1445,20 @@
         // Standort-spezifische Einstellungen laden
         function loadLocationSettings() {
             const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            const locationDetails = document.getElementById('location-details');
+            
             if (!selectedLocation) {
-                document.getElementById('admin-duration').value = config.roundDuration;
-                loadQuestionsList([...config.questions]);
+                if (locationDetails) {
+                    locationDetails.style.display = 'none';
+                }
                 return;
             }
             
             // Details-Sektion anzeigen
-            document.getElementById('location-details').style.display = 'block';
+            if (locationDetails) {
+                locationDetails.style.display = 'block';
+            }
 
             // Sicherstellen, dass locationConfigs existiert
             if (!config.locationConfigs) {
@@ -1464,8 +1481,6 @@
             displayQRCode(selectedLocation);
         }
 
-        // Teilnehmer-Link generieren
-        generateParticipantLink(selectedLocation);
 
         // Fragen-Liste laden
         function loadQuestionsList(questions) {
@@ -1732,10 +1747,20 @@
 
         // Bildschirm wechseln
         function showScreen(screenId) {
+            console.log('showScreen called with:', screenId);
+            
+            const targetScreen = document.getElementById(screenId);
+            if (!targetScreen) {
+                console.error('Screen not found:', screenId);
+                return;
+            }
+            
             document.querySelectorAll('.screen').forEach(screen => {
                 screen.classList.remove('active');
             });
-            document.getElementById(screenId).classList.add('active');
+            
+            targetScreen.classList.add('active');
+            console.log('Active screen is now:', screenId);
         }
 
         // Benachrichtigungston
@@ -1780,18 +1805,25 @@
         // Routing-Logik
         function handleRouting() {
             const urlParams = new URLSearchParams(window.location.search);
-            console.log('Hash:', window.location.hash);
-            console.log('Search:', window.location.search);
-            console.log('Admin param:', urlParams.get('admin'));
             const preselectedLocation = urlParams.get('location');
             const hash = window.location.hash;
 
+            console.log('Routing Debug - Hash:', hash, 'Admin Param:', urlParams.get('admin'), 'Location:', preselectedLocation);
+
             // Admin Route
             if (hash === '#admin' || urlParams.get('admin') === 'true') {
-                showAdminPanel();
+                console.log('Navigating to admin panel');
+                if (checkAdminAuth()) {
+                    showScreen('admin-screen');
+                    loadAdminSettings();
+                } else {
+                    showScreen('admin-login-screen');
+                }
+                return; // Wichtig: Stoppt weitere Ausführung
             } 
             // Teilnehmer-Modus mit vorausgewähltem Standort
             else if (preselectedLocation && config.locations.includes(preselectedLocation)) {
+                console.log('Setting up participant mode for location:', preselectedLocation);
                 currentLocation = preselectedLocation;
                 const locationInfo = document.getElementById('location-info');
                 const locationName = document.getElementById('location-name');
@@ -1804,6 +1836,7 @@
             } 
             // Kein Standort gewählt
             else if (!preselectedLocation && hash !== '#admin') {
+                console.log('No location selected');
                 showScreen('checkin-screen');
                 setTimeout(() => {
                     alert('Bitte verwende den Link, den du von deinem Organisator erhalten hast.');
