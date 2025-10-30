@@ -667,6 +667,8 @@
             <h1>⏸️ Pause</h1>
             <p class="subtitle">Warte auf die nächste Runde...</p>
             
+            <div class="timer" id="waiting-timer" style="font-size: 2em; margin: 20px 0;">--:--</div>
+            
             <div class="participants-list" id="waiting-participants-list"></div>
             
             <p style="color: #666; margin: 20px 0;">
@@ -816,6 +818,7 @@
         let visibilityCheckInterval = null;
         let lastVisibilityState = document.visibilityState;
         let currentPartner = null;
+        let waitingTimerInterval = null;
 
         // Admin Login
         function adminLogin() {
@@ -1458,10 +1461,12 @@
                     
                     console.log('No partner for this round, waiting...');
                     
-                    // Berechne verbleibende Zeit basierend auf roundDuration im sessionState
+                    // Timer für Waiting Screen starten
                     const roundDuration = sessionState.roundDuration || 10;
-                    const timeLeft = roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
+                    startWaitingTimer(sessionState.roundStartTime, roundDuration);
                     
+                    // Berechne verbleibende Zeit basierend auf roundDuration im sessionState
+                    const timeLeft = roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
                     console.log('Time left until next round:', Math.round(timeLeft / 1000), 'seconds');
                     
                     if (timeLeft > 0) {
@@ -1474,6 +1479,45 @@
                     }
                 }
             }, 2000);
+        }
+
+        // Waiting Timer starten
+        function startWaitingTimer(roundStartTime, roundDuration) {
+            // Alten Timer stoppen falls vorhanden
+            if (waitingTimerInterval) {
+                clearInterval(waitingTimerInterval);
+            }
+            
+            const timerElement = document.getElementById('waiting-timer');
+            if (!timerElement) return;
+            
+            const updateTimer = () => {
+                const now = Date.now();
+                const elapsed = now - roundStartTime;
+                const totalDuration = roundDuration * 60 * 1000;
+                const remaining = Math.max(0, totalDuration - elapsed);
+                
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                
+                timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (remaining <= 0) {
+                    clearInterval(waitingTimerInterval);
+                    timerElement.textContent = 'Gleich geht\'s los...';
+                }
+            };
+            
+            updateTimer(); // Sofort einmal ausführen
+            waitingTimerInterval = setInterval(updateTimer, 1000);
+        }
+
+        // Waiting Timer stoppen
+        function stopWaitingTimer() {
+            if (waitingTimerInterval) {
+                clearInterval(waitingTimerInterval);
+                waitingTimerInterval = null;
+            }
         }
 
         // Timer starten
@@ -2386,6 +2430,11 @@
         // Bildschirm wechseln
         function showScreen(screenId) {
             console.log('showScreen called with:', screenId);
+            
+            // Stoppe Waiting-Timer wenn zu anderem Screen gewechselt wird
+            if (screenId !== 'waiting-screen') {
+                stopWaitingTimer();
+            }
             
             const targetScreen = document.getElementById(screenId);
             if (!targetScreen) {
