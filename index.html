@@ -34,19 +34,23 @@
 
         .admin-btn {
             position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
+            bottom: 10px;
+            left: 10px;
+            background: transparent;
+            color: #009892;
+            border: 2px solid #009892;
+            padding: 6px 12px;
+            border-radius: 20px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
+            transition: all 0.3s;
+            opacity: 0.6;
         }
 
         .admin-btn:hover {
-            background: #5a6268;
+            background: #009892;
+            color: white;
+            opacity: 1;
         }
 
         h1 {
@@ -535,7 +539,8 @@
                 <h3>💭 Gesprächsfragen</h3>
                 <div class="questions-list" id="questions-list"></div>
                 <textarea id="new-question-input" placeholder="Neue Frage eingeben..."></textarea>
-                <button onclick="addQuestion()">Frage hinzufügen</button>
+                <button onclick="addQuestionToLocation()">Frage hinzufügen</button>
+                <button onclick="showQuestionLibrary()" style="background: #009892; margin-top: 5px;">📚 Aus Bibliothek wählen</button>
             </div>
 
             <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
@@ -579,6 +584,15 @@
             if (savedConfig) {
                 config = JSON.parse(savedConfig);
             } else {
+                // Standort-spezifische Configs initialisieren
+                const locationConfigs = {};
+                config.locations.forEach(loc => {
+                    locationConfigs[loc] = {
+                        roundDuration: config.roundDuration,
+                        questions: [...config.questions]
+                    };
+                });
+                config.locationConfigs = locationConfigs;
                 localStorage.setItem('appConfig', JSON.stringify(config));
             }
 
@@ -604,8 +618,14 @@
         // Duration Display aktualisieren
         function updateDurationDisplay() {
             const display = document.getElementById('duration-display');
-            if (display) {
-                display.textContent = config.roundDuration;
+            const locationSelect = document.getElementById('location-select');
+            if (display && locationSelect) {
+                const selectedLocation = locationSelect.value;
+                if (selectedLocation && config.locationConfigs && config.locationConfigs[selectedLocation]) {
+                    display.textContent = config.locationConfigs[selectedLocation].roundDuration;
+                } else {
+                    display.textContent = config.roundDuration;
+                }
             }
         }
 
@@ -620,6 +640,14 @@
                 select.appendChild(option);
             });
         }
+
+        // Event Listener für Standort-Änderung
+        document.addEventListener('DOMContentLoaded', () => {
+            const locationSelect = document.getElementById('location-select');
+            if (locationSelect) {
+                locationSelect.addEventListener('change', updateDurationDisplay);
+            }
+        });
 
         // Check-in
         function checkIn() {
@@ -935,8 +963,12 @@
                     
                     document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
                     document.getElementById('partner-name').textContent = match.partnerName;
+                    const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                        ? config.locationConfigs[currentLocation] 
+                        : config;
+                    const questions = locationConfig.questions || config.questions;
                     document.getElementById('conversation-question').textContent = 
-                        config.questions[Math.floor(Math.random() * config.questions.length)];
+                        questions[Math.floor(Math.random() * questions.length)];
                     
                     document.getElementById('chat-messages').innerHTML = '';
                     document.getElementById('chat-input').value = '';
@@ -961,7 +993,10 @@
         // Timer starten
         function startTimer(startTime) {
             const timerElement = document.getElementById('timer');
-            const ROUND_DURATION = config.roundDuration * 60 * 1000;
+            const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                ? config.locationConfigs[currentLocation] 
+                : config;
+            const ROUND_DURATION = (locationConfig.roundDuration || config.roundDuration) * 60 * 1000;
             
             function updateTimer() {
                 const elapsed = Date.now() - startTime;
@@ -1113,7 +1148,21 @@
         }
 
         function loadAdminSettings() {
-            document.getElementById('admin-duration').value = config.roundDuration;
+            // Location-Auswahl für Admin hinzufügen
+            const adminLocationSelect = document.getElementById('admin-location-select');
+            if (!adminLocationSelect) {
+                const adminSection = document.querySelector('.admin-section');
+                const selectHTML = `
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label>Standort für Einstellungen wählen</label>
+                        <select id="admin-location-select" onchange="loadLocationSettings()">
+                            <option value="">-- Standort wählen --</option>
+                            ${config.locations.map(loc => `<option value="${loc}">${loc}</option>`).join('')}
+                        </select>
+                    </div>
+                `;
+                adminSection.insertAdjacentHTML('afterbegin', selectHTML);
+            }
             
             const locationsList = document.getElementById('locations-list');
             locationsList.innerHTML = config.locations.map((loc, idx) => `
@@ -1179,8 +1228,176 @@
             }
         }
 
+        // Standort-spezifische Einstellungen laden
+        function loadLocationSettings() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                document.getElementById('admin-duration').value = config.roundDuration;
+                loadQuestionsList([...config.questions]);
+                return;
+            }
+            
+            // Sicherstellen, dass locationConfigs existiert
+            if (!config.locationConfigs) {
+                config.locationConfigs = {};
+            }
+            
+            // Config für Standort laden oder initialisieren
+            if (!config.locationConfigs[selectedLocation]) {
+                config.locationConfigs[selectedLocation] = {
+                    roundDuration: config.roundDuration,
+                    questions: [...config.questions]
+                };
+            }
+            
+            const locationConfig = config.locationConfigs[selectedLocation];
+            document.getElementById('admin-duration').value = locationConfig.roundDuration;
+            loadQuestionsList(locationConfig.questions);
+            
+            // QR-Code anzeigen
+            displayQRCode(selectedLocation);
+        }
+
+        // Fragen-Liste laden
+        function loadQuestionsList(questions) {
+            const questionsList = document.getElementById('questions-list');
+            questionsList.innerHTML = questions.map((q, idx) => `
+                <div class="question-item">
+                    <span>${q}</span>
+                    <button onclick="removeLocationQuestion(${idx})">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        // Standort-spezifische Frage entfernen
+        function removeLocationQuestion(index) {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                if (confirm('Möchtest du diese Frage wirklich aus der Gesamt-Bibliothek löschen?')) {
+                    config.questions.splice(index, 1);
+                    loadQuestionsList(config.questions);
+                }
+                return;
+            }
+            
+            if (confirm('Möchtest du diese Frage für diesen Standort entfernen?')) {
+                config.locationConfigs[selectedLocation].questions.splice(index, 1);
+                loadQuestionsList(config.locationConfigs[selectedLocation].questions);
+            }
+        }
+
+        // Frage hinzufügen (angepasst)
+        function addQuestionToLocation() {
+            const input = document.getElementById('new-question-input');
+            const question = input.value.trim();
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!question) {
+                alert('Bitte gib eine Frage ein!');
+                return;
+            }
+            
+            // Zur Gesamt-Bibliothek hinzufügen
+            if (!config.questions.includes(question)) {
+                config.questions.push(question);
+            }
+            
+            // Zur Standort-Config hinzufügen
+            if (selectedLocation) {
+                if (!config.locationConfigs[selectedLocation].questions.includes(question)) {
+                    config.locationConfigs[selectedLocation].questions.push(question);
+                }
+                loadQuestionsList(config.locationConfigs[selectedLocation].questions);
+            } else {
+                loadQuestionsList(config.questions);
+            }
+            
+            input.value = '';
+        }
+
+        // QR-Code anzeigen
+        function displayQRCode(location) {
+            const qrSection = document.getElementById('qr-code-section');
+            if (!qrSection) {
+                const adminScreen = document.getElementById('admin-screen');
+                const qrHTML = `
+                    <div class="admin-section" id="qr-code-section">
+                        <h3>🔗 QR-Code für ${location}</h3>
+                        <div id="qr-code-container" style="background: white; padding: 20px; border-radius: 10px; text-align: center;">
+                            <p style="color: #666; margin-bottom: 10px;">Nutzer können diesen QR-Code scannen, um direkt zu diesem Standort zu gelangen:</p>
+                            <div style="font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 5px; word-break: break-all; margin: 10px 0;">
+                                ${window.location.href}?location=${encodeURIComponent(location)}
+                            </div>
+                            <p style="color: #666; font-size: 12px; margin-top: 10px;">Erstelle einen QR-Code mit einem Online-Generator (z.B. qr-code-generator.com)</p>
+                        </div>
+                    </div>
+                `;
+                adminScreen.insertAdjacentHTML('beforeend', qrHTML);
+            } else {
+                const container = document.getElementById('qr-code-container');
+                qrSection.querySelector('h3').textContent = `🔗 QR-Code für ${location}`;
+                container.querySelector('div').textContent = `${window.location.href}?location=${encodeURIComponent(location)}`;
+            }
+        }
+
+        // Fragen-Bibliothek anzeigen
+        function showQuestionLibrary() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            const libraryHTML = `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                    <h4 style="color: #667eea; margin-bottom: 10px;">📚 Fragen-Bibliothek</h4>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Wähle Fragen aus der Gesamt-Bibliothek:</p>
+                    ${config.questions.map((q, idx) => {
+                        const isUsed = config.locationConfigs[selectedLocation].questions.includes(q);
+                        return `
+                            <div style="background: white; padding: 8px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 13px;">${q}</span>
+                                <button onclick="addQuestionFromLibrary(${idx})" 
+                                        style="padding: 4px 10px; font-size: 11px; ${isUsed ? 'opacity: 0.5;' : ''}"
+                                        ${isUsed ? 'disabled' : ''}>
+                                    ${isUsed ? '✓ Verwendet' : '+ Hinzufügen'}
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            const existingLibrary = document.getElementById('question-library');
+            if (existingLibrary) {
+                existingLibrary.remove();
+            }
+            
+            const questionsList = document.getElementById('questions-list');
+            questionsList.insertAdjacentHTML('afterend', `<div id="question-library">${libraryHTML}</div>`);
+        }
+
+        function addQuestionFromLibrary(index) {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            const question = config.questions[index];
+            
+            if (!config.locationConfigs[selectedLocation].questions.includes(question)) {
+                config.locationConfigs[selectedLocation].questions.push(question);
+                loadQuestionsList(config.locationConfigs[selectedLocation].questions);
+                showQuestionLibrary(); // Refresh library
+            }
+        }
+
         function saveAdminSettings() {
-            config.roundDuration = parseInt(document.getElementById('admin-duration').value);
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            const newDuration = parseInt(document.getElementById('admin-duration').value);
+            
+            if (selectedLocation && config.locationConfigs[selectedLocation]) {
+                config.locationConfigs[selectedLocation].roundDuration = newDuration;
+            } else {
+                config.roundDuration = newDuration;
+            }
+            
             localStorage.setItem('appConfig', JSON.stringify(config));
             updateDurationDisplay();
             loadLocationsSelect();
@@ -1227,6 +1444,17 @@
         window.addEventListener('load', () => {
             initStorage();
         });
+
+        // URL-Parameter prüfen
+        const urlParams = new URLSearchParams(window.location.search);
+        const preselectedLocation = urlParams.get('location');
+        if (preselectedLocation) {
+            const locationSelect = document.getElementById('location-select');
+            if (locationSelect && config.locations.includes(preselectedLocation)) {
+                locationSelect.value = preselectedLocation;
+                updateDurationDisplay();
+            }
+        }
     </script>
 </body>
 </html>
