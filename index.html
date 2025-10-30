@@ -719,9 +719,6 @@
                 <button onclick="showQuestionLibrary()" style="background: #009892; margin-top: 5px;">📚 Aus Bibliothek wählen</button>
             </div>
 
-            <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
-            </div>
-
             <!-- Standorte Verwalten -->
             <div class="admin-section" style="border-top: 2px solid #e0e0e0; padding-top: 30px; margin-top: 30px;">
                 <h3>📍 Standorte verwalten</h3>
@@ -733,6 +730,24 @@
             <button class="save-btn" onclick="saveAdminSettings()">💾 Speichern</button>
             <button class="back-btn" onclick="adminLogout()">🚪 Logout</button>
         </div>
+        <!-- Session Control -->
+            <div class="admin-section" style="border-top: 2px solid #e0e0e0; padding-top: 20px; margin-top: 20px;">
+                <h3>🎮 Session-Steuerung für diesen Standort</h3>
+                <div id="session-status" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <p><strong>Status:</strong> <span id="session-status-text">Lädt...</span></p>
+                    <p><strong>Teilnehmer:</strong> <span id="session-participants-count">0</span></p>
+                    <p><strong>Aktuelle Runde:</strong> <span id="session-round-number">-</span></p>
+                </div>
+                <button id="start-session-btn" onclick="adminStartSession()" style="background: #28a745;">
+                    🚀 Session jetzt starten
+                </button>
+                <button id="stop-session-btn" onclick="adminStopSession()" style="background: #dc3545; margin-top: 10px;">
+                    ⏹️ Session beenden
+                </button>
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    ⚠️ Der manuelle Start überschreibt die automatische Startlogik.
+                </p>
+            </div>
     </div>
 
     <script>
@@ -1090,6 +1105,11 @@
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
             const sessionState = sessionStates[currentLocation];
             
+            // Wenn Session manuell gesteuert wird, nicht automatisch starten
+            if (sessionState && sessionState.manuallyStarted) {
+                return;
+            }
+            
             if (locationParticipants.length >= 2 && (!sessionState || !sessionState.active)) {
                 setTimeout(() => {
                     const currentParticipants = JSON.parse(localStorage.getItem('participants'));
@@ -1366,6 +1386,7 @@
         function adminLogout() {
             sessionStorage.removeItem('adminAuth');
             isAdminAuthenticated = false;
+            stopAdminStatusUpdates();
             window.location.href = window.location.pathname;
         }
 
@@ -1446,6 +1467,7 @@
                 if (locationDetails) {
                     locationDetails.style.display = 'none';
                 }
+                stopAdminStatusUpdates();
                 return;
             }
             
@@ -1476,6 +1498,9 @@
                         
             // QR-Code anzeigen
             displayQRCode(selectedLocation);
+            
+            // Session-Status aktualisieren
+            startAdminStatusUpdates();
         }
 
 
@@ -1804,6 +1829,138 @@
             const library = document.getElementById('question-library');
             if (library) {
                 library.remove();
+            }
+        }
+
+        // Admin: Session manuell starten
+        function adminStartSession() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[selectedLocation] || [];
+            
+            if (locationParticipants.length < 2) {
+                alert('Mindestens 2 Teilnehmer erforderlich um eine Session zu starten!');
+                return;
+            }
+            
+            if (!confirm(`Session für ${selectedLocation} jetzt starten?`)) {
+                return;
+            }
+            
+            const matches = createMatches(locationParticipants);
+            
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            sessionStates[selectedLocation] = {
+                active: true,
+                roundNumber: 1,
+                roundStartTime: Date.now(),
+                matches: matches,
+                manuallyStarted: true
+            };
+            
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            
+            alert('Session gestartet! ✓');
+            updateSessionStatus();
+        }
+
+        // Admin: Session stoppen
+        function adminStopSession() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            if (!confirm(`Session für ${selectedLocation} wirklich beenden?`)) {
+                return;
+            }
+            
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            sessionStates[selectedLocation] = {
+                active: false,
+                roundNumber: 0,
+                roundStartTime: null,
+                matches: {},
+                manuallyStarted: false
+            };
+            
+            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            
+            // Alle Chats für diesen Standort löschen
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            Object.keys(chats).forEach(chatRoom => {
+                // Prüfen ob Chat zu diesem Standort gehört
+                const participants = JSON.parse(localStorage.getItem('participants'));
+                const locationParticipants = participants[selectedLocation] || [];
+                const participantIds = locationParticipants.map(p => p.id);
+                
+                if (chatRoom.split('_').some(id => participantIds.includes(id))) {
+                    delete chats[chatRoom];
+                }
+            });
+            localStorage.setItem('chats', JSON.stringify(chats));
+            
+            alert('Session beendet! ✓');
+            updateSessionStatus();
+        }
+
+        // Session-Status im Admin Panel aktualisieren
+        function updateSessionStatus() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                document.getElementById('session-status-text').textContent = 'Kein Standort gewählt';
+                document.getElementById('session-participants-count').textContent = '0';
+                document.getElementById('session-round-number').textContent = '-';
+                document.getElementById('start-session-btn').disabled = true;
+                document.getElementById('stop-session-btn').disabled = true;
+                return;
+            }
+            
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[selectedLocation] || [];
+            
+            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const sessionState = sessionStates[selectedLocation];
+            
+            document.getElementById('session-participants-count').textContent = locationParticipants.length;
+            
+            if (sessionState && sessionState.active) {
+                document.getElementById('session-status-text').innerHTML = '<span style="color: #28a745; font-weight: bold;">🟢 Aktiv</span>';
+                document.getElementById('session-round-number').textContent = sessionState.roundNumber || '-';
+                document.getElementById('start-session-btn').disabled = true;
+                document.getElementById('stop-session-btn').disabled = false;
+            } else {
+                document.getElementById('session-status-text').innerHTML = '<span style="color: #666;">⚫ Inaktiv</span>';
+                document.getElementById('session-round-number').textContent = '-';
+                document.getElementById('start-session-btn').disabled = locationParticipants.length < 2;
+                document.getElementById('stop-session-btn').disabled = true;
+            }
+        }
+
+        // Intervall für automatische Status-Aktualisierung im Admin Panel
+        let adminStatusInterval = null;
+        
+        function startAdminStatusUpdates() {
+            if (adminStatusInterval) {
+                clearInterval(adminStatusInterval);
+            }
+            updateSessionStatus();
+            adminStatusInterval = setInterval(updateSessionStatus, 2000);
+        }
+        
+        function stopAdminStatusUpdates() {
+            if (adminStatusInterval) {
+                clearInterval(adminStatusInterval);
+                adminStatusInterval = null;
             }
         }
 
