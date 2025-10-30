@@ -788,6 +788,8 @@
         let currentUser = null;
         let sessionActive = false;
         let currentLocation = null;
+        let currentSessionId = null;
+        let sessionStartLock = false;
         let roundTimer = null;
         let syncInterval = null;
         let chatSyncInterval = null;
@@ -1107,6 +1109,28 @@
             localStorage.setItem('chats', JSON.stringify(chats));
         }
 
+        // Alle Chats für einen Standort löschen
+        function clearAllChatsForLocation(location) {
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            const locationParticipants = participants[location] || [];
+            const participantIds = locationParticipants.map(p => p.id);
+            
+            const chats = JSON.parse(localStorage.getItem('chats'));
+            
+            // Finde alle Chat-Räume, die zu diesem Standort gehören
+            Object.keys(chats).forEach(chatRoom => {
+                const roomUserIds = chatRoom.split('_');
+                const belongsToLocation = roomUserIds.some(id => participantIds.includes(id));
+                
+                if (belongsToLocation) {
+                    console.log('Deleting chat room:', chatRoom);
+                    delete chats[chatRoom];
+                }
+            });
+            
+            localStorage.setItem('chats', JSON.stringify(chats));
+        }
+
         // Prüfe Start-Bedingungen
         function checkStartConditions() {
             const participants = JSON.parse(localStorage.getItem('participants'));
@@ -1119,16 +1143,34 @@
                 return;
             }
             
-            if (locationParticipants.length >= 2 && (!sessionState || !sessionState.active)) {
+            // Prüfe ob ich der Coordinator bin (ältester User)
+            const isCoordinator = locationParticipants.length > 0 && 
+                                  locationParticipants[0].id === currentUser.id;
+            
+            if (isCoordinator && locationParticipants.length >= 2 && (!sessionState || !sessionState.active)) {
+                // Lock setzen um doppelten Start zu verhindern
+                if (sessionStartLock) {
+                    console.log('Session start already in progress, skipping...');
+                    return;
+                }
+                
+                sessionStartLock = true;
+                
                 setTimeout(() => {
                     const currentParticipants = JSON.parse(localStorage.getItem('participants'));
                     const currentLocationParticipants = currentParticipants[currentLocation] || [];
                     const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                     const currentSessionState = currentSessionStates[currentLocation];
                     
-                    if (currentLocationParticipants.length >= 2 && (!currentSessionState || !currentSessionState.active)) {
+                    if (currentLocationParticipants.length >= 2 && 
+                        (!currentSessionState || !currentSessionState.active) &&
+                        currentLocationParticipants[0].id === currentUser.id) {
+                        
+                        console.log('Coordinator starting session:', currentUser.name);
                         startSession();
                     }
+                    
+                    sessionStartLock = false;
                 }, 3000);
             }
         }
@@ -1137,7 +1179,12 @@
         function startSession() {
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
             const sessionState = sessionStates[currentLocation];
-            if (sessionState && sessionState.active) return;
+            
+            // Verhindern von doppeltem Start
+            if (sessionState && sessionState.active) {
+                console.log('Session already active, aborting start');
+                return;
+            }
             
             const participants = JSON.parse(localStorage.getItem('participants'));
             const locationParticipants = participants[currentLocation] || [];
@@ -1156,8 +1203,15 @@
             
             const matches = createMatches(locationParticipants);
             
+            // Alte Chats für diesen Standort löschen
+            clearAllChatsForLocation(currentLocation);
+            
+            // Eindeutige Session-ID generieren
+            const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
             const newSessionState = {
                 active: true,
+                sessionId: sessionId,
                 roundNumber: 1,
                 roundStartTime: Date.now(),
                 matches: matches,
@@ -1203,6 +1257,19 @@
         function startRound() {
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
             const sessionState = sessionStates[currentLocation];
+            
+            // Prüfen ob Session-ID sich geändert hat
+            if (currentSessionId && sessionState.sessionId !== currentSessionId) {
+                console.log('New session detected, updating...');
+                currentSessionId = sessionState.sessionId;
+                stopChatSync();
+                if (currentChatRoom) {
+                    clearChat(currentChatRoom);
+                    currentChatRoom = null;
+                }
+            } else if (!currentSessionId) {
+                currentSessionId = sessionState.sessionId;
+            }
             
             showScreen('matching-screen');
             playNotificationSound();
@@ -1313,6 +1380,7 @@
                 const matches = createMatches(locationParticipants);
                 const newSessionState = {
                     active: true,
+                    sessionId: sessionState.sessionId,  // Behalte Session-ID bei
                     roundNumber: sessionState.roundNumber + 1,
                     roundStartTime: Date.now(),
                     matches: matches,
