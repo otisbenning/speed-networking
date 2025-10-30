@@ -966,14 +966,12 @@
 
         // Partner als inaktiv melden
         function reportInactive() {
-            if (!currentChatRoom) return;
+            if (!currentPartner || !currentPartner.id) {
+                alert('Kein Gesprächspartner gefunden.');
+                return;
+            }
             
-            // Partner-ID aus dem aktuellen Match holen
-            const sessionState = JSON.parse(localStorage.getItem('sessionState'));
-            const currentRound = sessionState.currentRound;
-            const myMatch = sessionState.matches[currentRound].find(m => m.partnerId === currentPartner.id || m.partnerId === currentUser.id);
-            
-            const partnerId = myMatch.partnerId === currentUser.id ? currentPartner.id : myMatch.partnerId;
+            const partnerId = currentPartner.id;
             
             // Inaktiv-Meldung speichern
             const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
@@ -982,10 +980,12 @@
             }
             inactiveReports[partnerId].push({
                 reportedBy: currentUser.id,
+                reporterName: currentUser.name,
                 timestamp: Date.now()
             });
             localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
             
+            console.log('Reported inactive:', partnerId);
             alert('Partner wurde als inaktiv gemeldet. Er wird aufgefordert, seine Anwesenheit zu bestätigen.');
         }
 
