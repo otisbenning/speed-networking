@@ -1260,19 +1260,11 @@
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
             const sessionState = sessionStates[currentLocation];
             
-            // Verhindern von mehrfachem Aufruf derselben Runde
-            if (currentRoundNumber === sessionState.roundNumber) {
-                console.log('Round already started, skipping...', sessionState.roundNumber);
-                return;
-            }
-            
-            currentRoundNumber = sessionState.roundNumber;
-            console.log('Starting round:', currentRoundNumber);
-            
-            // Prüfen ob Session-ID sich geändert hat
+            // Prüfen ob Session-ID sich geändert hat (neue Session vom Admin)
             if (currentSessionId && sessionState.sessionId !== currentSessionId) {
-                console.log('New session detected, updating...');
+                console.log('New session detected, resetting round counter...');
                 currentSessionId = sessionState.sessionId;
+                currentRoundNumber = 0;  // WICHTIG: Reset bei neuer Session!
                 stopChatSync();
                 if (currentChatRoom) {
                     clearChat(currentChatRoom);
@@ -1281,6 +1273,15 @@
             } else if (!currentSessionId) {
                 currentSessionId = sessionState.sessionId;
             }
+            
+            // Verhindern von mehrfachem Aufruf derselben Runde
+            if (currentRoundNumber === sessionState.roundNumber) {
+                console.log('Round already started, skipping...', sessionState.roundNumber);
+                return;
+            }
+            
+            currentRoundNumber = sessionState.roundNumber;
+            console.log('Starting round:', currentRoundNumber, 'of session:', currentSessionId);
             
             showScreen('matching-screen');
             playNotificationSound();
@@ -1996,8 +1997,16 @@
             const matches = createMatches(locationParticipants);
             
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            const existingState = sessionStates[selectedLocation];
+            
+            // Verwende die Session-ID vom Stop, oder generiere eine neue
+            const sessionId = (existingState && existingState.sessionId) 
+                ? existingState.sessionId 
+                : 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
             sessionStates[selectedLocation] = {
                 active: true,
+                sessionId: sessionId,  // Übernehme oder erstelle Session-ID
                 roundNumber: 1,
                 roundStartTime: Date.now(),
                 matches: matches,
@@ -2025,8 +2034,13 @@
             }
             
             const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
+            
+            // Generiere neue Session-ID damit Clients erkennen dass es eine neue Session sein wird
+            const newSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
             sessionStates[selectedLocation] = {
                 active: false,
+                sessionId: newSessionId,  // WICHTIG: Neue Session-ID!
                 roundNumber: 0,
                 roundStartTime: null,
                 matches: {},
