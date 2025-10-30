@@ -190,21 +190,6 @@
             animation: ring 0.5s ease-in-out 3;
         }
 
-        #confirmation-bell {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-
-        .confirmation-pending {
-            background: #ffc107;
-            color: #000;
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            display: inline-block;
-            margin: 10px 0;
-        }
-
         @keyframes ring {
             0%, 100% { transform: rotate(0deg); }
             25% { transform: rotate(-15deg); }
@@ -630,6 +615,9 @@
             <div class="round-info" id="round-info">Runde 1</div>
             
             <h2>Dein Gesprächspartner:</h2>
+                    <button onclick="reportInactive()" style="background: #ffc107; font-size: 0.85em; padding: 8px 15px; margin-bottom: 10px;">
+                ⚠️ Partner inaktiv melden
+            </button>
             <div class="partner-card">
                 <div class="partner-name" id="partner-name">---</div>
                 <p>Viel Spaß beim Kennenlernen! 😊</p>
@@ -659,24 +647,18 @@
             <button class="logout-btn" onclick="logout()">Auschecken</button>
         </div>
 
-        <!-- Participation Confirmation Screen -->
-        <div id="confirmation-screen" class="screen">
-            <div class="bell-animation" id="confirmation-bell">🔔</div>
-            <h1>Nächste Runde?</h1>
-            <p class="subtitle">Möchtest du an der nächsten Runde teilnehmen?</p>
+        <!-- Activity Check Screen -->
+        <div id="activity-check-screen" class="screen">
+            <div class="bell-animation">🔔</div>
+            <h1>Bist du noch da?</h1>
+            <p class="subtitle">Dein Gesprächspartner hat dich als inaktiv gemeldet.</p>
             
-            <div class="timer" id="confirmation-timer">10</div>
-            
-            <button onclick="confirmParticipation()" style="background: #28a745; margin-bottom: 10px;">
-                ✓ Ja, ich bin dabei!
-            </button>
-            
-            <button onclick="skipNextRound()" style="background: #ffc107;">
-                Pause - diesmal aussetzen
+            <button onclick="confirmActivity()" style="background: #28a745;">
+                ✓ Ja, ich bin noch da!
             </button>
             
             <p style="color: #666; font-size: 0.9em; margin-top: 20px;">
-                Keine Bestätigung? Du sitzt die nächste Runde aus und wirst danach wieder gefragt.
+                Wenn du nicht antwortest, musst du bei der nächsten Runde aussetzen.
             </p>
         </div>
 
@@ -833,9 +815,6 @@
         let currentChatRoom = null;
         let visibilityCheckInterval = null;
         let lastVisibilityState = document.visibilityState;
-        let participationConfirmed = false;
-        let confirmationTimer = null;
-        let confirmationTimeout = null;
 
         // Admin Login
         function adminLogin() {
@@ -985,6 +964,82 @@
             }
         }
 
+        // Partner als inaktiv melden
+        function reportInactive() {
+            if (!currentChatRoom) return;
+            
+            // Partner-ID aus dem aktuellen Match holen
+            const sessionState = JSON.parse(localStorage.getItem('sessionState'));
+            const currentRound = sessionState.currentRound;
+            const myMatch = sessionState.matches[currentRound].find(m => m.partnerId === currentPartner.id || m.partnerId === currentUser.id);
+            
+            const partnerId = myMatch.partnerId === currentUser.id ? currentPartner.id : myMatch.partnerId;
+            
+            // Inaktiv-Meldung speichern
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            if (!inactiveReports[partnerId]) {
+                inactiveReports[partnerId] = [];
+            }
+            inactiveReports[partnerId].push({
+                reportedBy: currentUser.id,
+                timestamp: Date.now()
+            });
+            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+            
+            alert('Partner wurde als inaktiv gemeldet. Er wird aufgefordert, seine Anwesenheit zu bestätigen.');
+        }
+
+        // Aktivitäts-Check bei gemeldeten Usern
+        function checkIfReported() {
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            
+            if (inactiveReports[currentUser.id] && inactiveReports[currentUser.id].length > 0) {
+                // Wurde gemeldet - Bestätigung anfordern
+                showScreen('activity-check-screen');
+                playNotificationSound();
+            }
+        }
+
+        // User bestätigt Aktivität
+        function confirmActivity() {
+            // Meldungen löschen
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            delete inactiveReports[currentUser.id];
+            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+            
+            // Zurück zum normalen Flow
+            const sessionState = JSON.parse(localStorage.getItem('sessionState'));
+            if (sessionState && sessionState.active) {
+                checkSessionState();
+            } else {
+                showScreen('lobby-screen');
+            }
+        }
+
+        // Gemeldete inaktive User aus Matching entfernen
+        function removeReportedInactiveUsers() {
+            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
+            const participants = JSON.parse(localStorage.getItem('participants'));
+            
+            Object.keys(participants).forEach(location => {
+                participants[location] = participants[location].map(p => {
+                    // Wenn User gemeldet wurde und nicht bestätigt hat
+                    if (inactiveReports[p.id] && inactiveReports[p.id].length > 0) {
+                        const reportTime = inactiveReports[p.id][0].timestamp;
+                        const now = Date.now();
+                        
+                        // Wenn Meldung älter als 30 Sekunden und keine Bestätigung
+                        if (now - reportTime > 30000) {
+                            p.reportedInactive = true;
+                        }
+                    }
+                    return p;
+                });
+            });
+            
+            localStorage.setItem('participants', JSON.stringify(participants));
+        }
+
         // Page Unload - echter Tab-Schluss
         function handlePageUnload(e) {
             if (currentUser && currentLocation) {
@@ -992,20 +1047,13 @@
             }
         }
 
-        // Cleanup: Entfernt nur User, die den Tab geschlossen haben (keine lastActivity mehr)
-        function cleanupInactiveUsers() {
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            
-            Object.keys(participants).forEach(location => {
-                const before = participants[location].length;
-                // Keine automatische Entfernung mehr - User bleiben bis Tab geschlossen wird
-                const after = participants[location].length;
-            });
-        }
 
         // Synchronisation starten
         function startSync() {
             syncInterval = setInterval(() => {
+                
+                checkIfReported(); // Prüfe ob User gemeldet wurde
+                removeReportedInactiveUsers(); // Entferne nicht bestätigte User
                 
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                 const sessionState = sessionStates[currentLocation];
@@ -1256,17 +1304,8 @@
         function createMatches(participants) {
             console.log('createMatches called with participants:', participants.map(p => p.name));
             
-            // Nur aktive Teilnehmer (die bestätigt haben oder nicht pausiert sind)
-            const activeParticipants = participants.filter(p => !p.pausedUntilNextRound);
-            
-            console.log('Active participants:', activeParticipants.map(p => p.name));
-            
-            // Pause-Flag für nächste Runde zurücksetzen
-            participants.forEach(p => {
-                if (p.pausedUntilNextRound) {
-                    delete p.pausedUntilNextRound;
-                }
-            });
+            // Markierte inaktive User rausfiltern
+            const activeParticipants = participants.filter(p => !p.reportedInactive);
             
             const shuffled = [...activeParticipants].sort(() => Math.random() - 0.5);
             const matches = {};
@@ -1450,95 +1489,12 @@
             roundTimer = setInterval(updateTimer, 100);
         }
 
-        // Teilnahme-Bestätigung anzeigen
-        function showParticipationConfirmation() {
-            participationConfirmed = false;
-            showScreen('confirmation-screen');
-            playNotificationSound();
-            
-            let countdown = 10;
-            const timerElement = document.getElementById('confirmation-timer');
-            timerElement.textContent = countdown;
-            
-            confirmationTimer = setInterval(() => {
-                countdown--;
-                timerElement.textContent = countdown;
-                
-                if (countdown <= 0) {
-                    clearInterval(confirmationTimer);
-                    // Timeout: User sitzt diese Runde aus
-                    skipNextRound();
-                }
-            }, 1000);
-            
-            // Backup Timeout
-            confirmationTimeout = setTimeout(() => {
-                if (!participationConfirmed) {
-                    skipNextRound();
-                }
-            }, 10000);
-        }
-
-        // User bestätigt Teilnahme
-        function confirmParticipation() {
-            participationConfirmed = true;
-            clearInterval(confirmationTimer);
-            clearTimeout(confirmationTimeout);
-            
-            // User bleibt in der Teilnehmerliste
-            console.log(currentUser.name + ' confirmed participation');
-            
-            // Warte auf nächste Runde
-            showScreen('waiting-screen');
-            updateWaitingParticipantsList();
-        }
-
-        // User setzt diese Runde aus
-        function skipNextRound() {
-            participationConfirmed = false;
-            clearInterval(confirmationTimer);
-            clearTimeout(confirmationTimeout);
-            
-            console.log(currentUser.name + ' skipping next round');
-            
-            // User temporär als "paused" markieren
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
-            const userIndex = locationParticipants.findIndex(p => p.id === currentUser.id);
-            
-            if (userIndex !== -1) {
-                locationParticipants[userIndex].pausedUntilNextRound = true;
-                participants[currentLocation] = locationParticipants;
-                localStorage.setItem('participants', JSON.stringify(participants));
-            }
-            
-            // Warte-Screen anzeigen
-            showScreen('waiting-screen');
-            updateWaitingParticipantsList();
-            
-            // Info anzeigen
-            const waitingList = document.getElementById('waiting-participants-list');
-            waitingList.innerHTML = `
-                <div style="background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-                    <strong>⏸️ Du sitzt diese Runde aus</strong><br>
-                    <span style="font-size: 0.9em; color: #856404;">
-                        Du wirst vor der übernächsten Runde wieder gefragt.
-                    </span>
-                </div>
-                ${waitingList.innerHTML}
-            `;
-        }
 
         // Nächste Runde prüfen
         function checkForNextRound() {
             console.log('checkForNextRound called for user:', currentUser.name);
             
-            // Bestätigungs-Screen anzeigen
-            setTimeout(() => {
-                showParticipationConfirmation();
-            }, 1000);
-            
-            // Warte auf Bestätigungen und starte dann Matching
+            // Warte kurz damit alle Clients den Timer beenden
             setTimeout(() => {
                 const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
                 const sessionState = sessionStates[currentLocation];
