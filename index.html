@@ -1780,6 +1780,9 @@
         // Routing-Logik
         function handleRouting() {
             const urlParams = new URLSearchParams(window.location.search);
+            console.log('Hash:', window.location.hash);
+            console.log('Search:', window.location.search);
+            console.log('Admin param:', urlParams.get('admin'));
             const preselectedLocation = urlParams.get('location');
             const hash = window.location.hash;
 
