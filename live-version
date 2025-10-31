@@ -862,6 +862,16 @@
                 socket.on('session-changed', () => {
                     checkSessionState();
                 });
+                socket.on('config-updated', (newConfig) => {
+                    console.log('Config wurde aktualisiert!');
+                    config = newConfig;
+                    localStorage.setItem('appConfig', JSON.stringify(config));
+                    
+                    // Wenn Admin-Panel offen ist, neu laden
+                    if (document.getElementById('admin-screen').classList.contains('active')) {
+                        loadAdminSettings();
+                    }
+                });
             }
         }
 
@@ -889,28 +899,53 @@
             return sessionStorage.getItem('adminAuth') === 'true';
         }
 
-        function initStorage() {
-            // Config laden oder initialisieren
-            const savedConfig = localStorage.getItem('appConfig');
-            if (savedConfig) {
-                config = JSON.parse(savedConfig);
-            } else {
-                // Standort-spezifische Configs initialisieren
-                const locationConfigs = {};
-                config.locations.forEach(loc => {
-                    locationConfigs[loc] = {
-                        roundDuration: config.roundDuration,
-                        questions: [...config.questions]
-                    };
-                });
-                config.locationConfigs = locationConfigs;
+        async function initStorage() {
+            try {
+                // Config vom Backend laden
+                const response = await fetch(`${BACKEND_URL}/api/config`);
+                const backendConfig = await response.json();
+                
+                // Verwende Backend-Config
+                config = backendConfig;
+                
+                // Stelle sicher, dass locationConfigs existiert
+                if (!config.locationConfigs) {
+                    config.locationConfigs = {};
+                    config.locations.forEach(loc => {
+                        config.locationConfigs[loc] = {
+                            roundDuration: config.roundDuration,
+                            questions: [...config.questions]
+                        };
+                    });
+                }
+                
+                // Speichere lokal als Cache
                 localStorage.setItem('appConfig', JSON.stringify(config));
+                
+            } catch (error) {
+                console.error('Fehler beim Laden der Config vom Backend:', error);
+                
+                // Fallback: Lade aus localStorage
+                const savedConfig = localStorage.getItem('appConfig');
+                if (savedConfig) {
+                    config = JSON.parse(savedConfig);
+                } else {
+                    // Default Config
+                    const locationConfigs = {};
+                    config.locations.forEach(loc => {
+                        locationConfigs[loc] = {
+                            roundDuration: config.roundDuration,
+                            questions: [...config.questions]
+                        };
+                    });
+                    config.locationConfigs = locationConfigs;
+                    localStorage.setItem('appConfig', JSON.stringify(config));
+                }
             }
             
             // Backend-Verbindung initialisieren
             initSocket();
         }
-
 
         // Duration Display aktualisieren
         function updateDurationDisplay() {
@@ -998,19 +1033,23 @@
         function startVisibilityCheck() {
             // Cleanup bei Page Unload (echter Tab-Schluss)
             window.addEventListener('beforeunload', handlePageUnload);
+            
+            // Heartbeat alle 10 Sekunden senden
+            setInterval(() => {
+                if (currentUser && currentLocation) {
+                    updateHeartbeat();
+                }
+            }, 10000); // Alle 10 Sekunden
         }
 
         // Heartbeat aktualisieren
         function updateHeartbeat() {
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
-            
-            const userIndex = locationParticipants.findIndex(p => p.id === currentUser.id);
-            if (userIndex !== -1) {
-                locationParticipants[userIndex].lastActivity = Date.now();
-                socket.emit('participant-checkout', {
-                    id: currentUser.id,
-                    location: currentLocation
+            // Heartbeat ans Backend senden
+            if (socket && currentUser) {
+                socket.emit('heartbeat', {
+                    userId: currentUser.id,
+                    location: currentLocation,
+                    timestamp: Date.now()
                 });
             }
         }
@@ -1022,91 +1061,82 @@
                 return;
             }
             
-            const partnerId = currentPartner.id;
-            
-            // Inaktiv-Meldung in localStorage (temporär für diese Funktion OK)
-            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
-            if (!inactiveReports[partnerId]) {
-                inactiveReports[partnerId] = [];
-            }
-            inactiveReports[partnerId].push({
+            // Inaktiv-Meldung ans Backend senden
+            socket.emit('report-inactive', {
+                reportedUserId: currentPartner.id,
                 reportedBy: currentUser.id,
                 reporterName: currentUser.name,
+                location: currentLocation,
                 timestamp: Date.now()
             });
-            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
             
             alert('Partner wurde als inaktiv gemeldet.');
         }
 
         // Aktivitäts-Check bei gemeldeten Usern
-        function checkIfReported() {
-            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
-            
-            if (inactiveReports[currentUser.id] && inactiveReports[currentUser.id].length > 0) {
-                const reportTime = inactiveReports[currentUser.id][0].timestamp;
-                const now = Date.now();
-                const timeSinceReport = now - reportTime;
+        async function checkIfReported() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/inactive-reports/${currentLocation}`);
+                const inactiveReports = await response.json();
                 
-                // Nur anzeigen wenn Meldung aktuell ist (< 5 Minuten)
-                if (timeSinceReport < 300000) {
-                    // Wurde gemeldet - Bestätigung anfordern
-                    if (!document.getElementById('activity-check-screen').classList.contains('active')) {
-                        showScreen('activity-check-screen');
-                        playNotificationSound();
-                    }
+                if (inactiveReports[currentUser.id] && inactiveReports[currentUser.id].length > 0) {
+                    const reportTime = inactiveReports[currentUser.id][0].timestamp;
+                    const now = Date.now();
+                    const timeSinceReport = now - reportTime;
                     
-                    // Zeige Timeout-Warning nach 30 Sekunden
-                    const timeoutWarning = document.getElementById('activity-timeout-warning');
-                    if (timeSinceReport > 30000) {
-                        timeoutWarning.style.display = 'block';
-                    } else {
-                        timeoutWarning.style.display = 'none';
+                    // Nur anzeigen wenn Meldung aktuell ist (< 5 Minuten)
+                    if (timeSinceReport < 300000) {
+                        // Wurde gemeldet - Bestätigung anfordern
+                        if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                            showScreen('activity-check-screen');
+                            playNotificationSound();
+                        }
+                        
+                        // Zeige Timeout-Warning nach 30 Sekunden
+                        const timeoutWarning = document.getElementById('activity-timeout-warning');
+                        if (timeSinceReport > 30000) {
+                            timeoutWarning.style.display = 'block';
+                        } else {
+                            timeoutWarning.style.display = 'none';
+                        }
                     }
-                } else {
-                    // Alte Meldung - automatisch löschen
-                    delete inactiveReports[currentUser.id];
-                    localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
                 }
+            } catch (error) {
+                console.error('Fehler beim Prüfen der Reports:', error);
             }
         }
 
         // User bestätigt Aktivität
-        function confirmActivity() {
-            // Meldungen löschen
-            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
-            delete inactiveReports[currentUser.id];
-            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+        async function confirmActivity() {
+            console.log('Confirming activity for:', currentUser.name);
+            
+            // Meldungen löschen - an Backend senden
+            socket.emit('confirm-activity', {
+                userId: currentUser.id,
+                location: currentLocation
+            });
             
             // Zurück zum normalen Flow
-            const sessionState = JSON.parse(localStorage.getItem('sessionState'));
-            if (sessionState && sessionState.active) {
-                checkSessionState();
-            } else {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                const sessionState = await response.json();
+                
+                if (sessionState && sessionState.active) {
+                    checkSessionState();
+                } else {
+                    showScreen('lobby-screen');
+                }
+            } catch (error) {
+                console.error('Fehler bei confirmActivity:', error);
                 showScreen('lobby-screen');
             }
         }
 
         // Gemeldete inaktive User aus Matching entfernen
         function removeReportedInactiveUsers() {
-            // Diese Funktion wird nicht mehr benötigt, da die Prüfung direkt in createMatches() erfolgt
-            // Aber wir behalten sie für Kompatibilität und mögliche zukünftige Cleanup-Aufgaben
-            
-            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
-            const now = Date.now();
-            
-            // Alte Meldungen (>5 Minuten) löschen, um LocalStorage sauber zu halten
-            Object.keys(inactiveReports).forEach(userId => {
-                inactiveReports[userId] = inactiveReports[userId].filter(report => {
-                    return (now - report.timestamp) < 300000; // 5 Minuten
-                });
-                
-                if (inactiveReports[userId].length === 0) {
-                    delete inactiveReports[userId];
-                }
-            });
-            
-            localStorage.setItem('inactiveReports', JSON.stringify(inactiveReports));
+            // Diese Funktion wird vom Backend gehandhabt
+            // Cleanup wird automatisch über Backend gemacht
+            // Funktion bleibt für Kompatibilität, macht aber nichts mehr
         }
 
         // Page Unload - echter Tab-Schluss
@@ -1120,47 +1150,65 @@
         // Synchronisation starten
         function startSync() {
             syncInterval = setInterval(async () => {
+                
+                // Wenn activity-check-screen aktiv ist, nicht überschreiben
                 if (!document.getElementById('activity-check-screen').classList.contains('active')) {
-                    checkIfReported();
+                    checkIfReported(); // Prüfe ob User gemeldet wurde
                 }
                 
                 try {
                     const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
                     const sessionState = await sessionResponse.json();
                     
+                    // Prüfe ob ich in den aktuellen Matches bin
                     const amIInMatches = sessionState && 
                                         sessionState.matches && 
                                         sessionState.matches[currentUser.id] !== undefined;
 
-                    if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                    // Wenn activity-check aktiv ist, nicht in neue Runde starten
+                    const isInActivityCheck = document.getElementById('activity-check-screen').classList.contains('active');
+
+                    // Nur starten wenn: Session aktiv UND wir noch nicht aktiv sind UND wir in den Matches sind UND nicht im Activity Check
+                    if (sessionState && sessionState.active && !sessionActive && amIInMatches && !isInActivityCheck) {
+                        console.log('Session active and I am in matches, starting round...');
+                        sessionActive = true;
+                        startRound();
+                    } else if (sessionState && sessionState.active && !sessionActive && !amIInMatches) {
+                        // Session läuft, aber ich bin nicht dabei → Bleibe in Lobby
+                        console.log('Session active but I am not in matches, staying in lobby...');
+                        if (!document.getElementById('lobby-screen').classList.contains('active')) {
+                            showScreen('lobby-screen');
+                            updateParticipantsList();
+                        }
+                    } else if ((!sessionState || !sessionState.active) && sessionActive) {
+                        sessionActive = false;
+                        showScreen('lobby-screen');
+                        updateParticipantsList();
+                    }
+                    
+                    if (document.getElementById('lobby-screen').classList.contains('active')) {
+                        updateParticipantsList();
+                        console.log('Calling checkStartConditions from lobby...');
+                        checkStartConditions();
+                        
+                        // Zeige Timer in Lobby wenn Session läuft
                         if (sessionState && sessionState.active) {
-                            const currentScreen = document.querySelector('.screen.active').id;
-                            
-                            if (amIInMatches) {
-                                if (currentScreen !== 'conversation-screen') {
-                                    showScreen('matching-screen');
-                                    setTimeout(() => {
-                                        checkSessionState();
-                                    }, 2000);
-                                }
-                            } else {
-                                if (currentScreen !== 'waiting-screen') {
-                                    checkSessionState();
-                                }
-                            }
-                        } else {
-                            if (document.getElementById('conversation-screen').classList.contains('active') ||
-                                document.getElementById('waiting-screen').classList.contains('active')) {
-                                showScreen('lobby-screen');
-                                updateParticipantsList();
+                            const lobbyTimer = document.getElementById('lobby-timer');
+                            if (lobbyTimer && !waitingTimerInterval) {
+                                startWaitingTimer(sessionState.roundStartTime, sessionState.roundDuration);
                             }
                         }
+                    }
+
+                    if (document.getElementById('waiting-screen').classList.contains('active')) {
+                        updateWaitingParticipantsList();
                     }
                 } catch (error) {
                     console.error('Fehler bei der Synchronisation:', error);
                 }
-            }, 1000);
+            }, 2000);
         }
+
 
         // Chat-Synchronisation starten
         function startChatSync() {
@@ -1244,145 +1292,202 @@
 
         // Chat löschen
         function clearChat(chatRoom) {
-            const chats = JSON.parse(localStorage.getItem('chats'));
-            delete chats[chatRoom];
-            localStorage.setItem('chats', JSON.stringify(chats));
+            // An Backend senden
+            socket.emit('clear-chat', {
+                chatRoom: chatRoom,
+                location: currentLocation
+            });
         }
 
         // Alle Chats für einen Standort löschen
-        function clearAllChatsForLocation(location) {
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[location] || [];
-            const participantIds = locationParticipants.map(p => p.id);
-            
-            const chats = JSON.parse(localStorage.getItem('chats'));
-            
-            // Finde alle Chat-Räume, die zu diesem Standort gehören
-            Object.keys(chats).forEach(chatRoom => {
-                const roomUserIds = chatRoom.split('_');
-                const belongsToLocation = roomUserIds.some(id => participantIds.includes(id));
+        async function clearAllChatsForLocation(location) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/participants/${location}`);
+                const locationParticipants = await response.json();
+                const participantIds = locationParticipants.map(p => p.id);
                 
-                if (belongsToLocation) {
-                    console.log('Deleting chat room:', chatRoom);
-                    delete chats[chatRoom];
-                }
-            });
-            
-            localStorage.setItem('chats', JSON.stringify(chats));
+                // An Backend senden
+                socket.emit('clear-location-chats', {
+                    location: location,
+                    participantIds: participantIds
+                });
+                
+                console.log('Cleared all chats for location:', location);
+            } catch (error) {
+                console.error('Fehler beim Löschen der Chats:', error);
+            }
         }
 
         // Prüfe Start-Bedingungen
-        function checkStartConditions() {
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const sessionState = sessionStates[currentLocation];
+        async function checkStartConditions() {
+            console.log('checkStartConditions called, lock:', sessionStartLock);
             
-            // Wenn Session unter manueller Kontrolle ist, nicht automatisch starten
-            if (sessionState && sessionState.manualControl) {
+            // Wenn Lock gesetzt ist, nicht nochmal starten
+            if (sessionStartLock) {
+                console.log('Lock is set, skipping');
                 return;
             }
             
-            // Prüfe ob ich der Coordinator bin (ältester User)
-            const isCoordinator = locationParticipants.length > 0 && 
-                                  locationParticipants[0].id === currentUser.id;
-            
-            if (isCoordinator && locationParticipants.length >= 2 && (!sessionState || !sessionState.active)) {
-                // Lock setzen um doppelten Start zu verhindern
-                if (sessionStartLock) {
-                    console.log('Session start already in progress, skipping...');
+            try {
+                // Participants vom Backend
+                const participantsResponse = await fetch(`${BACKEND_URL}/api/participants/${currentLocation}`);
+                const locationParticipants = await participantsResponse.json();
+                console.log('Participants:', locationParticipants.length, locationParticipants.map(p => p.name));
+                
+                // Session vom Backend
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                const sessionState = await sessionResponse.json();
+                console.log('Session state:', sessionState);
+                
+                // Wenn Session bereits aktiv ist, nichts tun
+                if (sessionState && sessionState.active) {
+                    console.log('Session already active, skipping');
                     return;
                 }
                 
-                sessionStartLock = true;
+                // Wenn Session unter manueller Kontrolle ist, nicht automatisch starten
+                if (sessionState && sessionState.manualControl) {
+                    console.log('Session under manual control, skipping');
+                    return;
+                }
                 
-                setTimeout(() => {
-                    const currentParticipants = JSON.parse(localStorage.getItem('participants'));
-                    const currentLocationParticipants = currentParticipants[currentLocation] || [];
-                    const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-                    const currentSessionState = currentSessionStates[currentLocation];
+                // Prüfe ob ich der Coordinator bin (ältester User)
+                const isCoordinator = locationParticipants.length > 0 && 
+                                      locationParticipants[0].id === currentUser.id;
+                console.log('Am I coordinator?', isCoordinator, 'My ID:', currentUser.id, 'First participant ID:', locationParticipants[0]?.id);
+                if (isCoordinator && locationParticipants.length >= 2) {
+                    console.log('✅ All conditions met! Starting session...');
+                    // Lock setzen um doppelten Start zu verhindern
+                    sessionStartLock = true;
+                    console.log('Setting session start lock - will start session');
                     
-                    if (currentLocationParticipants.length >= 2 && 
-                        (!currentSessionState || !currentSessionState.active) &&
-                        currentLocationParticipants[0].id === currentUser.id) {
-                        
-                        console.log('Coordinator starting session:', currentUser.name);
-                        startSession();
-                    }
-                    
-                    sessionStartLock = false;
-                }, 3000);
+                    // Starte Session und setze sessionActive sofort
+                    setTimeout(async () => {
+                        try {
+                            await startSession();
+                            // WICHTIG: Markiere Session als aktiv
+                            sessionActive = true;
+                            
+                            // Warte kurz bis Session im Backend ist, dann starte Runde
+                            setTimeout(() => {
+                                console.log('Coordinator starting own round after session creation...');
+                                startRound();
+                            }, 1000);
+                        } finally {
+                            sessionStartLock = false;
+                            console.log('Releasing session start lock');
+                        }
+                    }, 1000);
+                } else {
+                    console.log('❌ Conditions NOT met. Coordinator:', isCoordinator, 'Participants:', locationParticipants.length);
+                }
+            } catch (error) {
+                console.error('Fehler bei checkStartConditions:', error);
             }
         }
 
         // Session starten
-        function startSession() {
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const sessionState = sessionStates[currentLocation];
-            
-            // Verhindern von doppeltem Start
-            if (sessionState && sessionState.active) {
-                console.log('Session already active, aborting start');
-                return;
+        async function startSession() {
+            try {
+                // Session-State vom Backend holen
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                const sessionState = await sessionResponse.json();
+                
+                // Verhindern von doppeltem Start
+                if (sessionState && sessionState.active) {
+                    console.log('Session already active, aborting start');
+                    return;
+                }
+                
+                // OPTIMISTISCHER LOCK: Markiere Session SOFORT als "wird gestartet"
+                console.log('Creating optimistic lock session...');
+                const tempSessionData = {
+                    location: currentLocation,
+                    active: true,
+                    sessionId: 'temp_starting_' + Date.now(),
+                    roundNumber: 0,
+                    roundStartTime: Date.now(),
+                    matches: {},
+                    roundDuration: 10,
+                    manualControl: false
+                };
+                socket.emit('session-update', tempSessionData);
+                
+                // Warte kurz damit alle Clients die Temp-Session sehen
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Participants vom Backend holen
+                const participantsResponse = await fetch(`${BACKEND_URL}/api/participants/${currentLocation}`);
+                const locationParticipants = await participantsResponse.json();
+                if (locationParticipants.length < 2) return;
+                
+                // Config neu laden um sicherzustellen, dass wir die aktuellste Dauer haben
+                const savedConfig = localStorage.getItem('appConfig');
+                if (savedConfig) {
+                    config = JSON.parse(savedConfig);
+                }
+                
+                // Lade standort-spezifische Dauer
+                const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                    ? config.locationConfigs[currentLocation] 
+                    : config;
+                
+                const matches = await createMatches(locationParticipants);
+                
+                // Alte Chats für diesen Standort löschen
+                clearAllChatsForLocation(currentLocation);
+                
+                // Eindeutige Session-ID generieren
+                const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                
+                const newSessionState = {
+                    location: currentLocation,
+                    active: true,
+                    sessionId: sessionId,
+                    roundNumber: 1,
+                    roundStartTime: Date.now(),
+                    matches: matches,
+                    roundDuration: locationConfig.roundDuration
+                };
+                
+                console.log('Sending real session to backend:', newSessionState);
+                
+                // Session ans Backend senden
+                socket.emit('session-update', newSessionState);
+                
+            } catch (error) {
+                console.error('Fehler beim Starten der Session:', error);
             }
-            
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
-            if (locationParticipants.length < 2) return;
-            
-            // Config neu laden um sicherzustellen, dass wir die aktuellste Dauer haben
-            const savedConfig = localStorage.getItem('appConfig');
-            if (savedConfig) {
-                config = JSON.parse(savedConfig);
-            }
-            
-            // Lade standort-spezifische Dauer
-            const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
-                ? config.locationConfigs[currentLocation] 
-                : config;
-            
-            const matches = createMatches(locationParticipants);
-            
-            // Alte Chats für diesen Standort löschen
-            clearAllChatsForLocation(currentLocation);
-            
-            // Eindeutige Session-ID generieren
-            const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            
-            const newSessionState = {
-                active: true,
-                sessionId: sessionId,
-                roundNumber: 1,
-                roundStartTime: Date.now(),
-                matches: matches,
-                roundDuration: locationConfig.roundDuration  // Speichere Dauer im Session State
-            };
-            
-            sessionStates[currentLocation] = newSessionState;
-            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
         }
 
         // Paarungen erstellen
-        function createMatches(participants) {
+        async function createMatches(participants) {
             console.log('createMatches called with participants:', participants.map(p => p.name));
             
-            // Gemeldete inaktive User identifizieren
-            const inactiveReports = JSON.parse(localStorage.getItem('inactiveReports') || '{}');
-            const now = Date.now();
+            // Gemeldete inaktive User vom Backend holen
+            let activeParticipants = participants;
             
-            // Markiere gemeldete User, die nicht bestätigt haben (>30 Sekunden alt)
-            const activeParticipants = participants.filter(p => {
-                if (inactiveReports[p.id] && inactiveReports[p.id].length > 0) {
-                    const reportTime = inactiveReports[p.id][0].timestamp;
-                    const timeSinceReport = now - reportTime;
-                    
-                    if (timeSinceReport > 30000) {
-                        console.log('Excluding reported inactive user:', p.name, 'Report age:', Math.round(timeSinceReport/1000), 'seconds');
-                        return false; // User ausschließen
+            try {
+                const reportsResponse = await fetch(`${BACKEND_URL}/api/inactive-reports/${currentLocation}`);
+                const inactiveReports = await reportsResponse.json();
+                const now = Date.now();
+                
+                // Markiere gemeldete User, die nicht bestätigt haben (>30 Sekunden alt)
+                activeParticipants = participants.filter(p => {
+                    if (inactiveReports[p.id] && inactiveReports[p.id].length > 0) {
+                        const reportTime = inactiveReports[p.id][0].timestamp;
+                        const timeSinceReport = now - reportTime;
+                        
+                        if (timeSinceReport > 30000) {
+                            console.log('Excluding reported inactive user:', p.name, 'Report age:', Math.round(timeSinceReport/1000), 'seconds');
+                            return false; // User ausschließen
+                        }
                     }
-                }
-                return true; // User ist aktiv
-            });
+                    return true; // User ist aktiv
+                });
+            } catch (error) {
+                console.error('Fehler beim Laden der Inactive Reports:', error);
+            }
             
             console.log('Active participants after filtering:', activeParticipants.map(p => p.name));
             
@@ -1423,102 +1528,106 @@
         }
 
         // Runde starten
-        function startRound() {
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const sessionState = sessionStates[currentLocation];
-            
-            // Prüfen ob Session-ID sich geändert hat (neue Session vom Admin)
-            if (currentSessionId && sessionState.sessionId !== currentSessionId) {
-                console.log('New session detected, resetting round counter...');
-                currentSessionId = sessionState.sessionId;
-                currentRoundNumber = 0;  // WICHTIG: Reset bei neuer Session!
-                stopChatSync();
-                if (currentChatRoom) {
-                    clearChat(currentChatRoom);
-                    currentChatRoom = null;
-                }
-            } else if (!currentSessionId) {
-                currentSessionId = sessionState.sessionId;
-            }
-            
-            // Verhindern von mehrfachem Aufruf derselben Runde
-            if (currentRoundNumber === sessionState.roundNumber) {
-                console.log('Round already started, skipping...', sessionState.roundNumber);
-                return;
-            }
-            
-            currentRoundNumber = sessionState.roundNumber;
-            console.log('Starting round:', currentRoundNumber, 'of session:', currentSessionId);
-            
-            showScreen('matching-screen');
-            playNotificationSound();
-            
-            setTimeout(() => {
-                const match = sessionState.matches[currentUser.id];
+        async function startRound() {
+            try {
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                const sessionState = await sessionResponse.json();
                 
-                console.log('My match:', match);
-                
-                // Validiere dass das Match symmetrisch ist
-                if (match && match.partnerId) {
-                    const partnerMatch = sessionState.matches[match.partnerId];
-                    console.log('Partner match:', partnerMatch);
-                    
-                    if (partnerMatch && partnerMatch.partnerId !== currentUser.id) {
-                        console.error('ASYMMETRIC MATCH DETECTED!', 
-                                      'My partner:', match.partnerName, 
-                                      'Their partner:', partnerMatch.partnerName);
-                        alert('Fehler bei der Paarung erkannt! Bitte Admin informieren.');
-                        return;
+                // Prüfen ob Session-ID sich geändert hat (neue Session vom Admin)
+                if (currentSessionId && sessionState.sessionId !== currentSessionId) {
+                    console.log('New session detected, resetting round counter...');
+                    currentSessionId = sessionState.sessionId;
+                    currentRoundNumber = 0;  // WICHTIG: Reset bei neuer Session!
+                    stopChatSync();
+                    if (currentChatRoom) {
+                        clearChat(currentChatRoom);
+                        currentChatRoom = null;
                     }
+                } else if (!currentSessionId) {
+                    currentSessionId = sessionState.sessionId;
+                }
+                
+                // Verhindern von mehrfachem Aufruf derselben Runde
+                if (currentRoundNumber === sessionState.roundNumber) {
+                    console.log('Round already started, skipping...', sessionState.roundNumber);
+                    return;
+                }
+                
+                currentRoundNumber = sessionState.roundNumber;
+                console.log('Starting round:', currentRoundNumber, 'of session:', currentSessionId);
+                
+                showScreen('matching-screen');
+                playNotificationSound();
+                
+                setTimeout(() => {
+                    const match = sessionState.matches[currentUser.id];
                     
-                    currentChatRoom = match.chatRoom;
-                    currentPartner = {
-                        id: match.partnerId,
-                        name: match.partnerName
-                    };
+                    console.log('My match:', match);
+                    
+                    // Validiere dass das Match symmetrisch ist
+                    if (match && match.partnerId) {
+                        const partnerMatch = sessionState.matches[match.partnerId];
+                        console.log('Partner match:', partnerMatch);
+                        
+                        if (partnerMatch && partnerMatch.partnerId !== currentUser.id) {
+                            console.error('ASYMMETRIC MATCH DETECTED!', 
+                                          'My partner:', match.partnerName, 
+                                          'Their partner:', partnerMatch.partnerName);
+                            alert('Fehler bei der Paarung erkannt! Bitte Admin informieren.');
+                            return;
+                        }
+                        
+                        currentChatRoom = match.chatRoom;
+                        currentPartner = {
+                            id: match.partnerId,
+                            name: match.partnerName
+                        };
 
-                    document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
-                    document.getElementById('partner-name').textContent = match.partnerName;
-                    const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
-                        ? config.locationConfigs[currentLocation] 
-                        : config;
-                    const questions = locationConfig.questions || config.questions;
-                    document.getElementById('conversation-question').textContent = 
-                        questions[Math.floor(Math.random() * questions.length)];
-                    
-                    document.getElementById('chat-messages').innerHTML = '';
-                    document.getElementById('chat-input').value = '';
-                    
-                    showScreen('conversation-screen');
-                    startTimer(sessionState.roundStartTime);
-                    startChatSync();
-                    updateChatMessages();
-                } else {
-                    // Kein Partner in dieser Runde
-                    currentChatRoom = null;
-                    showScreen('waiting-screen');
-                    updateWaitingParticipantsList();
-                    
-                    console.log('No partner for this round, waiting...');
-                    
-                    // Timer für Waiting Screen starten
-                    const roundDuration = sessionState.roundDuration || 10;
-                    startWaitingTimer(sessionState.roundStartTime, roundDuration);
-                    
-                    // Berechne verbleibende Zeit basierend auf roundDuration im sessionState
-                    const timeLeft = roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
-                    console.log('Time left until next round:', Math.round(timeLeft / 1000), 'seconds');
-                    
-                    if (timeLeft > 0) {
-                        setTimeout(() => {
-                            checkForNextRound();
-                        }, timeLeft);
+                        document.getElementById('round-info').textContent = `Runde ${sessionState.roundNumber}`;
+                        document.getElementById('partner-name').textContent = match.partnerName;
+                        const locationConfig = config.locationConfigs && config.locationConfigs[currentLocation] 
+                            ? config.locationConfigs[currentLocation] 
+                            : config;
+                        const questions = locationConfig.questions || config.questions;
+                        document.getElementById('conversation-question').textContent = 
+                            questions[Math.floor(Math.random() * questions.length)];
+                        
+                        document.getElementById('chat-messages').innerHTML = '';
+                        document.getElementById('chat-input').value = '';
+                        
+                        showScreen('conversation-screen');
+                        startTimer(sessionState.roundStartTime);
+                        startChatSync();
+                        updateChatMessages();
                     } else {
-                        // Zeit ist schon abgelaufen, sofort zur nächsten Runde
-                        checkForNextRound();
+                        // Kein Partner in dieser Runde
+                        currentChatRoom = null;
+                        showScreen('waiting-screen');
+                        updateWaitingParticipantsList();
+                        
+                        console.log('No partner for this round, waiting...');
+                        
+                        // Timer für Waiting Screen starten
+                        const roundDuration = sessionState.roundDuration || 10;
+                        startWaitingTimer(sessionState.roundStartTime, roundDuration);
+                        
+                        // Berechne verbleibende Zeit basierend auf roundDuration im sessionState
+                        const timeLeft = roundDuration * 60 * 1000 - (Date.now() - sessionState.roundStartTime);
+                        console.log('Time left until next round:', Math.round(timeLeft / 1000), 'seconds');
+                        
+                        if (timeLeft > 0) {
+                            setTimeout(() => {
+                                checkForNextRound();
+                            }, timeLeft);
+                        } else {
+                            // Zeit ist schon abgelaufen, sofort zur nächsten Runde
+                            checkForNextRound();
+                        }
                     }
-                }
-            }, 2000);
+                }, 2000);
+            } catch (error) {
+                console.error('Fehler in startRound:', error);
+            }
         }
 
         // Waiting Timer starten (für Lobby und Waiting Screen)
@@ -1574,155 +1683,204 @@
         }
 
         // Timer starten
-        function startTimer(startTime) {
+        async function startTimer(startTime) {
             const timerElement = document.getElementById('timer');
             
-            // Lade Dauer aus dem Session State (wurde beim Start gespeichert)
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const sessionState = sessionStates[currentLocation];
-            const roundDuration = sessionState && sessionState.roundDuration 
-                ? sessionState.roundDuration 
-                : (config.locationConfigs && config.locationConfigs[currentLocation] 
-                    ? config.locationConfigs[currentLocation].roundDuration 
-                    : config.roundDuration);
-            
-            console.log('Timer Start - Location:', currentLocation);
-            console.log('Session State roundDuration:', sessionState?.roundDuration);
-            console.log('Config roundDuration:', config.locationConfigs?.[currentLocation]?.roundDuration);
-            console.log('Using roundDuration:', roundDuration, 'minutes');
-            
-            const ROUND_DURATION = roundDuration * 60 * 1000;
-            function updateTimer() {
-                const elapsed = Date.now() - startTime;
-                const remaining = Math.max(0, ROUND_DURATION - elapsed);
+            try {
+                // Lade Dauer aus dem Session State vom Backend
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                const sessionState = await sessionResponse.json();
+                const roundDuration = sessionState && sessionState.roundDuration 
+                    ? sessionState.roundDuration 
+                    : (config.locationConfigs && config.locationConfigs[currentLocation] 
+                        ? config.locationConfigs[currentLocation].roundDuration 
+                        : config.roundDuration);
                 
-                const minutes = Math.floor(remaining / 60000);
-                const seconds = Math.floor((remaining % 60000) / 1000);
+                console.log('Timer Start - Location:', currentLocation);
+                console.log('Session State roundDuration:', sessionState?.roundDuration);
+                console.log('Config roundDuration:', config.locationConfigs?.[currentLocation]?.roundDuration);
+                console.log('Using roundDuration:', roundDuration, 'minutes');
                 
-                timerElement.textContent = 
-                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                
-                if (remaining < 60000) {
-                    timerElement.classList.add('warning');
-                } else {
-                    timerElement.classList.remove('warning');
-                }
-                
-                if (remaining === 0) {
-                    clearInterval(roundTimer);
-                    stopChatSync();
+                const ROUND_DURATION = roundDuration * 60 * 1000;
+                function updateTimer() {
+                    const elapsed = Date.now() - startTime;
+                    const remaining = Math.max(0, ROUND_DURATION - elapsed);
                     
-                    // Chat löschen
-                    if (currentChatRoom) {
-                        clearChat(currentChatRoom);
-                        currentChatRoom = null;
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    
+                    timerElement.textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    if (remaining < 60000) {
+                        timerElement.classList.add('warning');
+                    } else {
+                        timerElement.classList.remove('warning');
                     }
                     
-                    checkForNextRound();
+                    if (remaining === 0) {
+                        clearInterval(roundTimer);
+                        stopChatSync();
+                        
+                        // Chat löschen
+                        if (currentChatRoom) {
+                            clearChat(currentChatRoom);
+                            currentChatRoom = null;
+                        }
+                        
+                        checkForNextRound();
+                    }
                 }
+                
+                updateTimer();
+                roundTimer = setInterval(updateTimer, 100);
+            } catch (error) {
+                console.error('Fehler beim Timer-Start:', error);
             }
-            
-            updateTimer();
-            roundTimer = setInterval(updateTimer, 100);
         }
 
-
         // Nächste Runde prüfen
-        function checkForNextRound() {
+        async function checkForNextRound() {
             console.log('checkForNextRound called for user:', currentUser.name);
             
             // Warte kurz damit alle Clients den Timer beenden
-            setTimeout(() => {
-                const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-                const sessionState = sessionStates[currentLocation];
-                
-                // Hole FRISCHE Teilnehmerliste
-                const participants = JSON.parse(localStorage.getItem('participants'));
-                const locationParticipants = participants[currentLocation] || [];
-                
-                console.log('Participants for next round:', locationParticipants.map(p => p.name));
-                
-                if (locationParticipants.length < 2) {
-                    endSession();
-                    return;
-                }
-                
-                // Prüfe ob ich der Coordinator bin
-                const isCoordinator = locationParticipants.length > 0 && 
-                                      locationParticipants[0].id === currentUser.id;
-                
-                console.log('Is coordinator?', isCoordinator, 'User:', currentUser.name);
-                
-                if (isCoordinator) {
-                    // Prüfe ob schon jemand die nächste Runde erstellt hat
-                    const currentSessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-                    const currentSessionState = currentSessionStates[currentLocation];
+            setTimeout(async () => {
+                try {
+                    const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                    const sessionState = await sessionResponse.json();
                     
-                    if (currentSessionState.roundNumber > sessionState.roundNumber) {
-                        console.log('Next round already created by another client');
+                    // Hole FRISCHE Teilnehmerliste
+                    const participantsResponse = await fetch(`${BACKEND_URL}/api/participants/${currentLocation}`);
+                    const locationParticipants = await participantsResponse.json();
+                    
+                    console.log('Participants for next round:', locationParticipants.map(p => p.name));
+                    
+                    if (locationParticipants.length < 2) {
+                        endSession();
                         return;
                     }
                     
-                    // NOCHMAL frische Teilnehmerliste holen (sicher ist sicher!)
-                    const finalParticipants = JSON.parse(localStorage.getItem('participants'));
-                    const finalLocationParticipants = finalParticipants[currentLocation] || [];
+                    // Prüfe ob ich der Coordinator bin
+                    const isCoordinator = locationParticipants.length > 0 && 
+                                          locationParticipants[0].id === currentUser.id;
                     
-                    console.log('Coordinator creating matches for', finalLocationParticipants.length, 'participants:', 
-                                finalLocationParticipants.map(p => p.name));
+                    console.log('Is coordinator?', isCoordinator, 'User:', currentUser.name);
                     
-                    const matches = createMatches(finalLocationParticipants);
+                    if (isCoordinator) {
+                        // Prüfe ob schon jemand die nächste Runde erstellt hat
+                        const recheckResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                        const currentSessionState = await recheckResponse.json();
+                        
+                        if (currentSessionState.roundNumber > sessionState.roundNumber) {
+                            console.log('Next round already created by another client');
+                            return;
+                        }
+                        
+                        // NOCHMAL frische Teilnehmerliste holen (sicher ist sicher!)
+                        const finalResponse = await fetch(`${BACKEND_URL}/api/participants/${currentLocation}`);
+                        const finalLocationParticipants = await finalResponse.json();
+                        
+                        console.log('Coordinator creating matches for', finalLocationParticipants.length, 'participants:', 
+                                    finalLocationParticipants.map(p => p.name));
+                        
+                        const matches = await createMatches(finalLocationParticipants);
+                        
+                        // Debug: Log alle Matches
+                        Object.keys(matches).forEach(userId => {
+                            const match = matches[userId];
+                            const userName = finalLocationParticipants.find(p => p.id === userId)?.name;
+                            console.log(`Match: ${userName} (${userId}) <-> ${match.partnerName} (${match.partnerId})`);
+                        });
+                        
+                        const newSessionState = {
+                            location: currentLocation,
+                            active: true,
+                            sessionId: sessionState.sessionId,
+                            roundNumber: sessionState.roundNumber + 1,
+                            roundStartTime: Date.now(),
+                            matches: matches,
+                            roundDuration: sessionState.roundDuration,
+                            manualControl: sessionState.manualControl
+                        };
+                        
+                        // Session ans Backend senden
+                        socket.emit('session-update', newSessionState);
+                        
+                        console.log('Next round created:', newSessionState.roundNumber);
+                    }
                     
-                    // Debug: Log alle Matches
-                    Object.keys(matches).forEach(userId => {
-                        const match = matches[userId];
-                        const userName = finalLocationParticipants.find(p => p.id === userId)?.name;
-                        console.log(`Match: ${userName} (${userId}) <-> ${match.partnerName} (${match.partnerId})`);
-                    });
+                    // Reset für alle Teilnehmer
+                    currentRoundNumber = 0;
                     
-                    const newSessionState = {
-                        active: true,
-                        sessionId: sessionState.sessionId,
-                        roundNumber: sessionState.roundNumber + 1,
-                        roundStartTime: Date.now(),
-                        matches: matches,
-                        roundDuration: sessionState.roundDuration,
-                        manualControl: sessionState.manualControl
-                    };
+                    // WICHTIG: sessionActive muss HIER auf false bleiben
+                    // Der syncInterval wird es auf true setzen wenn die neue Runde bereit ist
+                    sessionActive = false;
                     
-                    currentSessionStates[currentLocation] = newSessionState;
-                    localStorage.setItem('sessionStates', JSON.stringify(currentSessionStates));
+                    console.log('Round transition complete, waiting for sync to trigger next round...');
                     
-                    console.log('Next round created:', newSessionState.roundNumber);
+                } catch (error) {
+                    console.error('Fehler in checkForNextRound:', error);
                 }
-                
-                // Reset für alle Teilnehmer
-                currentRoundNumber = 0;
-                
-                // WICHTIG: sessionActive muss HIER auf false bleiben
-                // Der syncInterval wird es auf true setzen wenn die neue Runde bereit ist
-                sessionActive = false;
-                
-                console.log('Round transition complete, waiting for sync to trigger next round...');
-                
             }, 1000);
         }
 
-
         // Session beenden
         function endSession() {
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            sessionStates[currentLocation] = {
+            const sessionData = {
+                location: currentLocation,
                 active: false,
                 roundNumber: 0,
                 roundStartTime: null,
                 matches: {}
             };
-            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            
+            // Session ans Backend senden
+            socket.emit('session-update', sessionData);
+            
             sessionActive = false;
             currentRoundNumber = 0;
             stopChatSync();
             showScreen('lobby-screen');
             updateParticipantsList();
+        }
+
+        // Session State prüfen
+        async function checkSessionState() {
+            try {
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${currentLocation}`);
+                const sessionState = await sessionResponse.json();
+                
+                const amIInMatches = sessionState && 
+                                    sessionState.matches && 
+                                    sessionState.matches[currentUser.id] !== undefined;
+
+                if (!document.getElementById('activity-check-screen').classList.contains('active')) {
+                    if (sessionState && sessionState.active) {
+                        const currentScreen = document.querySelector('.screen.active').id;
+                        
+                        if (amIInMatches) {
+                            if (currentScreen !== 'conversation-screen') {
+                                showScreen('matching-screen');
+                                setTimeout(() => {
+                                    checkSessionState();
+                                }, 2000);
+                            }
+                        } else {
+                            if (currentScreen !== 'waiting-screen') {
+                                checkSessionState();
+                            }
+                        }
+                    } else {
+                        if (document.getElementById('conversation-screen').classList.contains('active') ||
+                            document.getElementById('waiting-screen').classList.contains('active')) {
+                            showScreen('lobby-screen');
+                            updateParticipantsList();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Fehler bei checkSessionState:', error);
+            }
         }
 
         // Teilnehmerliste aktualisieren
@@ -1750,14 +1908,26 @@
         }
 
         // Wartende Teilnehmerliste aktualisieren
-        function updateWaitingParticipantsList() {
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
-            const listElement = document.getElementById('waiting-participants-list');
-            
-            listElement.innerHTML = locationParticipants
-                .map(p => `<div class="participant">${p.name}</div>`)
-                .join('');
+        async function updateWaitingParticipantsList() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/participants/${currentLocation}`);
+                const locationParticipants = await response.json();
+                const listElement = document.getElementById('waiting-participants-list');
+                
+                listElement.innerHTML = locationParticipants
+                    .map(p => `
+                        <div class="participant" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>${p.name}</span>
+                            <button onclick="forceCheckoutUser('${p.id}', '${p.name}')" 
+                                    style="background: #ef4444; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                🚫 Entfernen
+                            </button>
+                        </div>
+                    `)
+                    .join('');
+            } catch (error) {
+                console.error('Fehler beim Laden der Teilnehmer:', error);
+            }
         }
 
         // Logout
@@ -1766,10 +1936,11 @@
                 return;
             }
             
-            const participants = JSON.parse(localStorage.getItem('participants'));
-            const locationParticipants = participants[currentLocation] || [];
-            participants[currentLocation] = locationParticipants.filter(p => p.id !== currentUser.id);
-            localStorage.setItem('participants', JSON.stringify(participants));
+            // An Backend senden
+            socket.emit('participant-checkout', {
+                id: currentUser.id,
+                location: currentLocation
+            });
             
             clearInterval(syncInterval);
             clearInterval(roundTimer);
@@ -1835,7 +2006,7 @@
             `).join('');
         }
 
-        function addLocation() {
+        async function addLocation() {
             const input = document.getElementById('new-location-input');
             const location = input.value.trim();
             
@@ -1850,14 +2021,73 @@
             }
             
             config.locations.push(location);
-            input.value = '';
-            loadAdminSettings();
+            
+            // Initialisiere locationConfigs für neuen Standort
+            if (!config.locationConfigs) {
+                config.locationConfigs = {};
+            }
+            config.locationConfigs[location] = {
+                roundDuration: config.roundDuration,
+                questions: [...config.questions]
+            };
+            
+            // Speichere lokal
+            localStorage.setItem('appConfig', JSON.stringify(config));
+            
+            // Speichere im Backend für alle Nutzer
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                
+                if (response.ok) {
+                    alert(`Standort "${location}" wurde hinzugefügt! ✓`);
+                    input.value = '';
+                    loadAdminSettings();
+                } else {
+                    alert('Fehler beim Speichern!');
+                }
+            } catch (error) {
+                console.error('Fehler beim Speichern der Config:', error);
+                alert('Fehler beim Speichern!');
+            }
         }
 
-        function removeLocation(index) {
-            if (confirm('Möchtest du diesen Standort wirklich löschen?')) {
-                config.locations.splice(index, 1);
-                loadAdminSettings();
+        async function removeLocation(index) {
+            if (!confirm('Möchtest du diesen Standort wirklich löschen?')) {
+                return;
+            }
+            
+            const removedLocation = config.locations[index];
+            config.locations.splice(index, 1);
+            
+            // Entferne auch locationConfig
+            if (config.locationConfigs && config.locationConfigs[removedLocation]) {
+                delete config.locationConfigs[removedLocation];
+            }
+            
+            // Speichere lokal
+            localStorage.setItem('appConfig', JSON.stringify(config));
+            
+            // Speichere im Backend für alle Nutzer
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                
+                if (response.ok) {
+                    alert(`Standort "${removedLocation}" wurde gelöscht! ✓`);
+                    loadAdminSettings();
+                } else {
+                    alert('Fehler beim Speichern!');
+                }
+            } catch (error) {
+                console.error('Fehler beim Speichern der Config:', error);
+                alert('Fehler beim Speichern!');
             }
         }
 
@@ -2332,6 +2562,28 @@
             updateSessionStatus();
         }
 
+        // Admin: User manuell rauswerfen
+        async function forceCheckoutUser(userId, userName) {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            if (!confirm(`User "${userName}" wirklich aus der Session entfernen?`)) {
+                return;
+            }
+            
+            socket.emit('admin-force-checkout', {
+                userId: userId,
+                location: selectedLocation
+            });
+            
+            alert(`User "${userName}" wurde entfernt! ✓`);
+            updateSessionStatus();
+        }
+
         // Session-Status im Admin Panel aktualisieren
         async function updateSessionStatus() {
             const selectedLocation = document.getElementById('admin-location-select').value;
@@ -2393,8 +2645,39 @@
             }
         }
 
+        // Session beenden (Admin)
+        async function stopSession() {
+            const selectedLocation = document.getElementById('admin-location-select').value;
+            
+            if (!selectedLocation) {
+                alert('Bitte wähle zuerst einen Standort aus!');
+                return;
+            }
+            
+            if (!confirm(`Session für ${selectedLocation} wirklich beenden?`)) {
+                return;
+            }
+            
+            const endSessionData = {
+                location: selectedLocation,
+                active: false,
+                sessionId: null,
+                roundNumber: 0,
+                roundStartTime: null,
+                matches: {},
+                roundDuration: null,
+                manualControl: false  // Wichtig: Automatik wieder aktivieren!
+            };
+            
+            socket.emit('session-update', endSessionData);
+            
+            alert('Session beendet! ✓');
+            updateSessionStatus();
+        }
+
+
         // Automatischen Modus wieder aktivieren
-        function enableAutoMode() {
+        async function enableAutoMode() {
             const selectedLocation = document.getElementById('admin-location-select').value;
             
             if (!selectedLocation) {
@@ -2406,21 +2689,26 @@
                 return;
             }
             
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const currentState = sessionStates[selectedLocation] || {};
-            
-            sessionStates[selectedLocation] = {
-                ...currentState,
-                manualControl: false
-            };
-            
-            localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
-            
-            alert('Automatischer Modus aktiviert! ✓\n\nDie Session startet automatisch bei >= 2 Teilnehmern.');
-            updateSessionStatus();
+            try {
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${selectedLocation}`);
+                const currentState = await sessionResponse.json();
+                
+                const sessionData = {
+                    ...currentState,
+                    location: selectedLocation,
+                    manualControl: false
+                };
+                
+                socket.emit('session-update', sessionData);
+                
+                alert('Automatischer Modus aktiviert! ✓\n\nDie Session startet automatisch bei >= 2 Teilnehmern.');
+                updateSessionStatus();
+            } catch (error) {
+                console.error('Fehler beim Aktivieren des Auto-Modus:', error);
+            }
         }
 
-        function saveAdminSettings() {
+        async function saveAdminSettings() {
             const selectedLocation = document.getElementById('admin-location-select').value;
             
             if (!selectedLocation) {
@@ -2434,24 +2722,48 @@
                 config.locationConfigs[selectedLocation].roundDuration = newDuration;
             }
             
+            // Speichere lokal
             localStorage.setItem('appConfig', JSON.stringify(config));
             
-            // Prüfe ob eine Session für diesen Standort läuft
-            const sessionStates = JSON.parse(localStorage.getItem('sessionStates'));
-            const sessionState = sessionStates[selectedLocation];
-            
-            if (sessionState && sessionState.active) {
-                // Aktualisiere die Dauer auch für die laufende Session
-                sessionState.roundDuration = newDuration;
-                sessionStates[selectedLocation] = sessionState;
-                localStorage.setItem('sessionStates', JSON.stringify(sessionStates));
+            // WICHTIG: Speichere auch im Backend für alle Nutzer!
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
                 
-                alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\n⚠️ Hinweis: Die neue Dauer (' + newDuration + ' Min) gilt ab der AKTUELLEN Runde.\nDie Timer bei den Teilnehmern zeigen noch die alte Restzeit an, aber die nächste Runde verwendet die neue Dauer.');
-            } else {
-                alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\nDie neue Dauer (' + newDuration + ' Min) wird bei der nächsten Session verwendet.');
+                if (!response.ok) {
+                    throw new Error('Backend save failed');
+                }
+            } catch (error) {
+                console.error('Fehler beim Speichern der Config im Backend:', error);
             }
             
-            updateSessionStatus();
+            // Prüfe ob eine Session für diesen Standort läuft
+            try {
+                const sessionResponse = await fetch(`${BACKEND_URL}/api/session/${selectedLocation}`);
+                const sessionState = await sessionResponse.json();
+                
+                if (sessionState && sessionState.active) {
+                    // Aktualisiere die Dauer auch für die laufende Session
+                    const updatedSession = {
+                        ...sessionState,
+                        location: selectedLocation,
+                        roundDuration: newDuration
+                    };
+                    
+                    socket.emit('session-update', updatedSession);
+                    
+                    alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\n⚠️ Hinweis: Die neue Dauer (' + newDuration + ' Min) gilt ab der AKTUELLEN Runde.\nDie Timer bei den Teilnehmern zeigen noch die alte Restzeit an, aber die nächste Runde verwendet die neue Dauer.');
+                } else {
+                    alert('Einstellungen für ' + selectedLocation + ' gespeichert! ✓\n\nDie neue Dauer (' + newDuration + ' Min) wird bei der nächsten Session verwendet.');
+                }
+                
+                updateSessionStatus();
+            } catch (error) {
+                console.error('Fehler beim Speichern der Einstellungen:', error);
+            }
         }
 
         // Bildschirm wechseln
@@ -2506,8 +2818,8 @@
         }
 
         // Initialisierung und Routing
-        window.addEventListener('load', () => {
-            initStorage();
+        window.addEventListener('load', async () => {
+            await initStorage(); // ← WARTE bis Config geladen ist!
             handleRouting();
         });
 
@@ -2533,10 +2845,12 @@
                 } else {
                     showScreen('admin-login-screen');
                 }
-                return; // Wichtig: Stoppt weitere Ausführung
+                return;
             } 
             // Teilnehmer-Modus mit vorausgewähltem Standort
-            else if (preselectedLocation && config.locations.includes(preselectedLocation)) {
+            else if (preselectedLocation) {
+                // KEINE Prüfung mehr ob Standort in config.locations ist!
+                // Das erlaubt auch neue Standorte die gerade erst hinzugefügt wurden
                 console.log('Setting up participant mode for location:', preselectedLocation);
                 currentLocation = preselectedLocation;
                 const locationInfo = document.getElementById('location-info');
@@ -2545,6 +2859,18 @@
                     locationInfo.style.display = 'block';
                     locationName.textContent = '📍 ' + preselectedLocation;
                 }
+                
+                // Stelle sicher dass locationConfigs für diesen Standort existiert
+                if (!config.locationConfigs) {
+                    config.locationConfigs = {};
+                }
+                if (!config.locationConfigs[preselectedLocation]) {
+                    config.locationConfigs[preselectedLocation] = {
+                        roundDuration: config.roundDuration || 10,
+                        questions: config.questions || []
+                    };
+                }
+                
                 updateDurationDisplay();
                 showScreen('checkin-screen');
             } 
